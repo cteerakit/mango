@@ -66,9 +66,9 @@
                         <TextBlock
                             x:Name="PickerEmptyText"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="Add players from Match or save notes to build this list."
+                            Text="No players yet. Connect Dota 2 GSI, or open a player from the Match page to populate this list."
                             TextWrapping="WrapWholeWords"
-                            Visibility="Collapsed" />
+                            Visibility="Visible" />
                     </StackPanel>
                 </Border>
 
@@ -173,6 +173,12 @@
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Text="No recent matches found."
                             TextWrapping="WrapWholeWords"
+                            Visibility="Collapsed" />
+                        <Button
+                            x:Name="RetryButton"
+                            HorizontalAlignment="Left"
+                            Content="Retry OpenDota"
+                            Click="OnRetryClick"
                             Visibility="Collapsed" />
                         <Grid x:Name="MatchesHeaderGrid" ColumnSpacing="8">
                             <Grid.ColumnDefinitions>

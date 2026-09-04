@@ -12,6 +12,7 @@ public sealed partial class PlayerPage : Page
     private bool _suppressPickerChange;
     private string? _selectedSteamId;
     private string? _loadedSteamId;
+    private string? _loadingSteamId;
     private IReadOnlyList<PlayerPickerItem> _pickerItems = Array.Empty<PlayerPickerItem>();
 
     public PlayerPage()
@@ -36,7 +37,7 @@ public sealed partial class PlayerPage : Page
         steamId = FirstNonEmpty(steamId, ResolveSelectedSteamId(steamId));
         if (string.IsNullOrWhiteSpace(steamId))
         {
-            ClearProfile("Waiting for your Steam ID from Dota GSI. Connect to a match, or open a player from Match.");
+            ClearProfile("No Steam ID found. Launch Dota 2 and connect to a match, or click a player name on the Match page to open them here.");
             return;
         }
 
@@ -65,6 +66,17 @@ public sealed partial class PlayerPage : Page
         {
             RefreshLocalIdentity(_selectedSteamId);
         }
+    }
+
+    private void OnRetryClick(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_selectedSteamId))
+        {
+            return;
+        }
+
+        _loadedSteamId = null;
+        SelectPlayer(_selectedSteamId, forceReload: true);
     }
 
     private void OnPlayerPickerChanged(object sender, SelectionChangedEventArgs e)
@@ -128,13 +140,24 @@ public sealed partial class PlayerPage : Page
         return FirstNonEmpty(_selectedSteamId, ResolveLocalSteamId());
     }
 
-    private void SelectPlayer(string steamId)
+    private void SelectPlayer(string steamId, bool forceReload = false)
     {
+        steamId = steamId.Trim();
+        if (string.IsNullOrWhiteSpace(steamId))
+        {
+            return;
+        }
+
         _selectedSteamId = steamId;
 
-        if (string.Equals(steamId, _loadedSteamId, StringComparison.OrdinalIgnoreCase))
+        if (!forceReload && string.Equals(steamId, _loadedSteamId, StringComparison.OrdinalIgnoreCase))
         {
             RefreshLocalIdentity(steamId);
+            return;
+        }
+
+        if (!forceReload && string.Equals(steamId, _loadingSteamId, StringComparison.OrdinalIgnoreCase))
+        {
             return;
         }
 
@@ -162,9 +185,11 @@ public sealed partial class PlayerPage : Page
     private async Task LoadPlayerAsync(string steamId)
     {
         CancelLoad();
-        _loadCts = new CancellationTokenSource();
-        var token = _loadCts.Token;
+        var loadCts = new CancellationTokenSource();
+        _loadCts = loadCts;
+        var token = loadCts.Token;
         _selectedSteamId = steamId;
+        _loadingSteamId = steamId;
 
         SetLoading(true);
         RefreshLocalIdentity(steamId);
@@ -172,7 +197,7 @@ public sealed partial class PlayerPage : Page
         try
         {
             var overview = await AppServices.OpenDota.GetPlayerOverviewAsync(steamId, token);
-            if (token.IsCancellationRequested)
+            if (!ReferenceEquals(loadCts, _loadCts) || token.IsCancellationRequested)
             {
                 return;
             }
@@ -183,7 +208,7 @@ public sealed partial class PlayerPage : Page
                 BindRemoteUnavailable(
                     SteamIdConverter.ToAccountId(steamId) is null
                         ? "This player ID is not a valid Steam or OpenDota account ID."
-                        : "Could not reach OpenDota. Check your internet connection and try again.");
+                        : "OpenDota is temporarily unavailable. Check your internet connection and tap Retry, or try again in a few minutes.");
                 return;
             }
 
@@ -193,11 +218,11 @@ public sealed partial class PlayerPage : Page
         }
         catch (OperationCanceledException)
         {
-            // Ignore navigation away.
+            // Ignore navigation away or a newer load superseding this one.
         }
         catch (Exception ex)
         {
-            if (!token.IsCancellationRequested)
+            if (ReferenceEquals(loadCts, _loadCts) && !token.IsCancellationRequested)
             {
                 _loadedSteamId = null;
                 BindRemoteUnavailable($"Could not load OpenDota data: {ex.Message}");
@@ -205,8 +230,10 @@ public sealed partial class PlayerPage : Page
         }
         finally
         {
-            if (!token.IsCancellationRequested)
+            if (ReferenceEquals(loadCts, _loadCts))
             {
+                _loadCts = null;
+                _loadingSteamId = null;
                 SetLoading(false);
             }
         }
@@ -246,6 +273,7 @@ public sealed partial class PlayerPage : Page
         MatchesEmptyText.Visibility = matches.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         MatchesHeaderGrid.Visibility = matches.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         MatchesList.Visibility = matches.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        RetryButton.Visibility = Visibility.Collapsed;
 
         OverallCard.Visibility = Visibility.Visible;
         MatchesCard.Visibility = Visibility.Visible;
@@ -262,6 +290,7 @@ public sealed partial class PlayerPage : Page
         MatchesEmptyText.Visibility = Visibility.Visible;
         MatchesHeaderGrid.Visibility = Visibility.Collapsed;
         MatchesList.Visibility = Visibility.Collapsed;
+        RetryButton.Visibility = Visibility.Visible;
         OverallCard.Visibility = Visibility.Visible;
         MatchesCard.Visibility = Visibility.Visible;
         SubtitleText.Text = message;
@@ -269,12 +298,18 @@ public sealed partial class PlayerPage : Page
 
     private void ClearProfile(string message)
     {
+        CancelLoad();
         _selectedSteamId = null;
         _loadedSteamId = null;
+        _loadingSteamId = null;
         IdentityCard.Visibility = Visibility.Collapsed;
         OverallCard.Visibility = Visibility.Collapsed;
         MatchesCard.Visibility = Visibility.Collapsed;
+        RetryButton.Visibility = Visibility.Collapsed;
         SubtitleText.Text = message;
+        PickerEmptyText.Visibility = _pickerItems.Count == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         SetLoading(false);
     }
 
@@ -283,13 +318,20 @@ public sealed partial class PlayerPage : Page
         LoadingRing.IsActive = isLoading;
         LoadingRing.Visibility = isLoading ? Visibility.Visible : Visibility.Collapsed;
         PlayerPicker.IsEnabled = !isLoading && _pickerItems.Count > 0;
+        RetryButton.IsEnabled = !isLoading;
     }
 
     private void CancelLoad()
     {
-        _loadCts?.Cancel();
-        _loadCts?.Dispose();
+        if (_loadCts is null)
+        {
+            return;
+        }
+
+        _loadCts.Cancel();
+        _loadCts.Dispose();
         _loadCts = null;
+        _loadingSteamId = null;
     }
 
     private static bool PickerListsEqual(

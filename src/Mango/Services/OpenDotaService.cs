@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Mango.Models;
@@ -464,13 +465,14 @@ public sealed class OpenDotaService
         TimeSpan? maxAge = null) where T : class
     {
         var cachePath = Path.Combine(_cacheDirectory, cacheFile);
+        string? staleJson = null;
         if (File.Exists(cachePath))
         {
+            staleJson = await File.ReadAllTextAsync(cachePath, cancellationToken);
             var age = DateTime.UtcNow - File.GetLastWriteTimeUtc(cachePath);
             if (maxAge is null || age <= maxAge)
             {
-                var cached = await File.ReadAllTextAsync(cachePath, cancellationToken);
-                var cachedValue = JsonSerializer.Deserialize<T>(cached, JsonOptions);
+                var cachedValue = DeserializeCached<T>(staleJson);
                 if (cachedValue is not null)
                 {
                     return cachedValue;
@@ -478,17 +480,54 @@ public sealed class OpenDotaService
             }
         }
 
-        var endpoint = endpointFactory();
-        using var response = await _httpClient.GetAsync(endpoint, cancellationToken);
-        if (!response.IsSuccessStatusCode)
+        try
         {
-            return null;
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                using var response = await _httpClient.GetAsync(endpointFactory(), cancellationToken);
+                if (response.IsSuccessStatusCode)
+                {
+                    var json = await response.Content.ReadAsStringAsync(cancellationToken);
+                    await File.WriteAllTextAsync(cachePath, json, cancellationToken);
+                    return DeserializeCached<T>(json);
+                }
+
+                if (!IsTransientStatusCode((int)response.StatusCode) || attempt == 2)
+                {
+                    break;
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(1 << attempt), cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (HttpRequestException)
+        {
+            // Fall back to stale cache when the network is unavailable.
+        }
+        catch (TaskCanceledException)
+        {
+            // HttpClient timeout; fall back to stale cache.
         }
 
-        var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        await File.WriteAllTextAsync(cachePath, json, cancellationToken);
-        return JsonSerializer.Deserialize<T>(json, JsonOptions);
+        return DeserializeCached<T>(staleJson);
     }
+
+    private static T? DeserializeCached<T>(string? json) where T : class =>
+        string.IsNullOrWhiteSpace(json) ? null : JsonSerializer.Deserialize<T>(json, JsonOptions);
+
+    private static bool IsTransientStatusCode(int statusCode) =>
+        statusCode is (int)HttpStatusCode.RequestTimeout
+            or (int)HttpStatusCode.TooManyRequests
+            or (int)HttpStatusCode.BadGateway
+            or (int)HttpStatusCode.ServiceUnavailable
+            or (int)HttpStatusCode.GatewayTimeout
+            or 522;
 
     private async Task<T> GetCachedRequiredAsync<T>(
         string cacheFile,
