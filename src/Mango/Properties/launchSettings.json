@@ -1,10 +1,12 @@
 {
   "profiles": {
     "Mango (Package)": {
-      "commandName": "MsixPackage"
+      "commandName": "MsixPackage",
+      "hotReloadEnabled": true
     },
     "Mango (Unpackaged)": {
-      "commandName": "Project"
+      "commandName": "Project",
+      "hotReloadEnabled": true
     }
   }
 }

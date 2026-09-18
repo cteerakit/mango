@@ -25,8 +25,24 @@ public sealed partial class ShellPage : Page
         }
     }
 
+    private object? _lastPageParameter;
+
     private void ContentFrame_Navigated(object sender, NavigationEventArgs e)
     {
+        _lastPageParameter = e.Parameter;
+        NavView.IsBackEnabled = ContentFrame.CanGoBack;
+    }
+
+    internal void ReloadCurrentPage()
+    {
+        var pageType = ContentFrame.CurrentSourcePageType;
+        if (pageType is null)
+        {
+            return;
+        }
+
+        ContentFrame.Navigate(pageType, _lastPageParameter ?? ViewModel);
+        ContentFrame.BackStack.Clear();
         NavView.IsBackEnabled = ContentFrame.CanGoBack;
     }
 

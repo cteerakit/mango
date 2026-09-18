@@ -115,6 +115,145 @@ public sealed class SteamWebApiService
         return result;
     }
 
+    public async Task<IReadOnlyList<MatchPlayer>?> GetRealtimeRosterAsync(
+        string? serverSteamId,
+        string apiKey,
+        IReadOnlyDictionary<int, string>? heroNames = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(serverSteamId) || string.IsNullOrWhiteSpace(apiKey))
+        {
+            return null;
+        }
+
+        var url =
+            "https://api.steampowered.com/IDOTA2MatchStats_570/GetRealtimeStats/v1/"
+            + $"?key={Uri.EscapeDataString(apiKey.Trim())}"
+            + $"&server_steam_id={Uri.EscapeDataString(serverSteamId.Trim())}";
+
+        using var response = await _httpClient.GetAsync(url, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var payload = await JsonSerializer.DeserializeAsync<SteamRealtimeStatsResponse>(
+            stream,
+            JsonOptions,
+            cancellationToken);
+
+        var teams = payload?.Result?.Teams;
+        if (teams is not { Count: > 0 })
+        {
+            return null;
+        }
+
+        var players = new List<MatchPlayer>();
+        foreach (var team in teams)
+        {
+            var teamName = team.TeamNumber == 3 ? "dire" : "radiant";
+            var teamPlayers = team.Players ?? [];
+            for (var index = 0; index < teamPlayers.Count; index++)
+            {
+                var player = teamPlayers[index];
+                var accountId = player.AccountId;
+                string? heroName = null;
+                heroNames?.TryGetValue(player.HeroId, out heroName);
+                players.Add(new MatchPlayer
+                {
+                    SteamId = accountId > 0 ? accountId.ToString() : string.Empty,
+                    Name = FirstNonEmpty(player.Name, accountId > 0 ? accountId.ToString() : "Unknown"),
+                    TeamName = teamName,
+                    TeamSlot = index,
+                    HeroName = heroName ?? string.Empty,
+                    HeroLevel = player.Level,
+                    Kills = player.Kills,
+                    Deaths = player.Deaths,
+                    Assists = player.Assists,
+                    LastHits = player.LastHits,
+                    Denies = player.Denies,
+                    Gold = player.Gold,
+                });
+            }
+        }
+
+        return players.Count > 0 ? players : null;
+    }
+
+    public async Task<SteamTopLiveHit?> FindTopLiveGameAsync(
+        ulong? accountId,
+        string? matchId,
+        string apiKey,
+        IReadOnlyDictionary<int, string>? heroNames = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(apiKey)
+            || (accountId is null && !PlayerNotesMatch.IsUsableMatchId(matchId)))
+        {
+            return null;
+        }
+
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var partnerTasks = Enumerable.Range(0, 11)
+            .Select(partner => FetchTopLivePartnerAsync(partner, apiKey, linked.Token))
+            .ToList();
+
+        while (partnerTasks.Count > 0)
+        {
+            var done = await Task.WhenAny(partnerTasks);
+            partnerTasks.Remove(done);
+
+            SteamTopLiveResponse? payload;
+            try
+            {
+                payload = await done;
+            }
+            catch (OperationCanceledException)
+            {
+                continue;
+            }
+            catch
+            {
+                continue;
+            }
+
+            var hit = SteamTopLiveMapper.FindGame(payload, accountId, matchId, heroNames);
+            if (hit is null)
+            {
+                continue;
+            }
+
+            linked.Cancel();
+            return hit;
+        }
+
+        return null;
+    }
+
+    private async Task<SteamTopLiveResponse?> FetchTopLivePartnerAsync(
+        int partner,
+        string apiKey,
+        CancellationToken cancellationToken)
+    {
+        var url =
+            "https://api.steampowered.com/IDOTA2Match_570/GetTopLiveGame/v1/"
+            + $"?key={Uri.EscapeDataString(apiKey.Trim())}"
+            + $"&partner={partner}";
+
+        using var response = await _httpClient.GetAsync(url, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        return await JsonSerializer.DeserializeAsync<SteamTopLiveResponse>(
+            stream,
+            SteamTopLiveMapper.JsonOptions,
+            cancellationToken);
+    }
+
     private static string FirstNonEmpty(params string?[] values)
     {
         foreach (var value in values)
@@ -162,6 +301,60 @@ public sealed class SteamWebApiService
         /// <summary>1 = private, 2 = friends only, 3 = public.</summary>
         [JsonPropertyName("communityvisibilitystate")]
         public int CommunityVisibilityState { get; set; }
+    }
+
+    private sealed class SteamRealtimeStatsResponse
+    {
+        [JsonPropertyName("result")]
+        public SteamRealtimeStatsResult? Result { get; set; }
+    }
+
+    private sealed class SteamRealtimeStatsResult
+    {
+        [JsonPropertyName("teams")]
+        public List<SteamRealtimeTeam>? Teams { get; set; }
+    }
+
+    private sealed class SteamRealtimeTeam
+    {
+        [JsonPropertyName("team_number")]
+        public int TeamNumber { get; set; }
+
+        [JsonPropertyName("players")]
+        public List<SteamRealtimePlayer>? Players { get; set; }
+    }
+
+    private sealed class SteamRealtimePlayer
+    {
+        [JsonPropertyName("accountid")]
+        public ulong AccountId { get; set; }
+
+        [JsonPropertyName("name")]
+        public string? Name { get; set; }
+
+        [JsonPropertyName("heroid")]
+        public int HeroId { get; set; }
+
+        [JsonPropertyName("level")]
+        public int Level { get; set; }
+
+        [JsonPropertyName("kill_count")]
+        public int Kills { get; set; }
+
+        [JsonPropertyName("death_count")]
+        public int Deaths { get; set; }
+
+        [JsonPropertyName("assists_count")]
+        public int Assists { get; set; }
+
+        [JsonPropertyName("lh_count")]
+        public int LastHits { get; set; }
+
+        [JsonPropertyName("denies_count")]
+        public int Denies { get; set; }
+
+        [JsonPropertyName("gold")]
+        public int Gold { get; set; }
     }
 }
 

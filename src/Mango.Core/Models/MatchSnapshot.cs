@@ -9,6 +9,7 @@ public sealed class MatchSnapshot
     public int GameTimeSeconds { get; set; }
     public bool IsDaytime { get; set; }
     public string MatchId { get; set; } = string.Empty;
+    public string ServerSteamId { get; set; } = string.Empty;
     public int RadiantScore { get; set; }
     public int DireScore { get; set; }
     public int NetWorthLead { get; set; }

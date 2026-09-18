@@ -16,6 +16,7 @@ public static class GsiNormalizer
             GameTimeSeconds = payload.Map?.GameTime ?? 0,
             IsDaytime = payload.Map?.Daytime ?? true,
             MatchId = PlayerNotesMatch.NormalizeMatchId(payload.Map?.MatchId),
+            ServerSteamId = payload.Map?.ServerSteamId?.Trim() ?? string.Empty,
             RadiantScore = payload.Map?.RadiantScore ?? 0,
             DireScore = payload.Map?.DireScore ?? 0,
             NetWorthLead = payload.Map?.RadiantGoldAdv is { Length: > 0 } adv ? adv[^1] : 0,

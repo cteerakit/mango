@@ -111,6 +111,25 @@ public sealed class OverlayWindowService
 
     public void ToggleInteractive() => SetInteractive(!_settings.OverlayInteractive);
 
+    public void RecreateIfVisible()
+    {
+        if (!_settings.OverlayVisible)
+        {
+            return;
+        }
+
+        var interactive = _settings.OverlayInteractive;
+        if (_overlayWindow is not null)
+        {
+            OverlayClickThroughHelper.Reset(_overlayWindow);
+            _overlayWindow.Close();
+            _overlayWindow = null;
+        }
+
+        ShowOverlay();
+        SetInteractive(interactive);
+    }
+
     public void Close()
     {
         if (_overlayWindow is null)

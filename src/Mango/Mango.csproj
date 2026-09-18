@@ -18,7 +18,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <NoWarn>$(NoWarn);MVVMTK0045</NoWarn>
+    <HotReloadEnabled>true</HotReloadEnabled>
   </PropertyGroup>
+
+  <ItemGroup Condition="'$(Configuration)' == 'Debug'">
+    <Watch Include="**\*.xaml" />
+    <Watch Include="**\*.cs" />
+  </ItemGroup>
 
   <ItemGroup>
     <Content Include="Assets\SplashScreen.scale-200.png" />

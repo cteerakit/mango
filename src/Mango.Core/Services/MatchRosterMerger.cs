@@ -52,6 +52,41 @@ public static class MatchRosterMerger
             .ToList();
     }
 
+    /// <summary>
+    /// Playing GSI usually sends only the local player. Keep a previously fetched
+    /// lobby unless the match id changed or the new payload is already richer.
+    /// </summary>
+    public static IReadOnlyList<MatchPlayer> RetainIfRicher(
+        IReadOnlyList<MatchPlayer> incoming,
+        IReadOnlyList<MatchPlayer> current,
+        string incomingMatchId,
+        string currentMatchId)
+    {
+        if (!IsSameMatch(currentMatchId, incomingMatchId))
+        {
+            return incoming;
+        }
+
+        if (CountIdentified(incoming) >= CountIdentified(current) || CountIdentified(current) <= 1)
+        {
+            return incoming;
+        }
+
+        return Merge(incoming, current);
+    }
+
+    public static bool IsSameMatch(string currentMatchId, string incomingMatchId)
+    {
+        if (PlayerNotesMatch.IsUsableMatchId(currentMatchId)
+            && PlayerNotesMatch.IsUsableMatchId(incomingMatchId)
+            && !string.Equals(currentMatchId, incomingMatchId, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
     public static int CountIdentified(IReadOnlyList<MatchPlayer> players) =>
         players.Count(static player =>
             !string.IsNullOrWhiteSpace(player.SteamId) || !string.IsNullOrWhiteSpace(player.Name));

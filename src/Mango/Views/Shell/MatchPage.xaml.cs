@@ -365,11 +365,23 @@ public sealed partial class MatchPage : Page
 
         if (playerCount == 1)
         {
+            if (!string.IsNullOrWhiteSpace(AppServices.MatchStore.LastRosterFetchMessage))
+            {
+                return AppServices.MatchStore.LastRosterFetchMessage;
+            }
+
+            if (AppServices.MatchStore.LastRosterFetchFailed)
+            {
+                return PlayerNotesMatch.IsUsableMatchId(snapshot.MatchId)
+                    ? "Only your player is in GSI. Could not load the full lobby yet — retrying automatically."
+                    : "Only your local player is in GSI. Waiting for a match ID, then the lobby will load from Steam/OpenDota.";
+            }
+
             return PlayerNotesMatch.IsUsableMatchId(snapshot.MatchId)
-                ? "Only your player is in GSI so far. Loading the full lobby from OpenDota…"
+                ? "Only your player is in GSI so far. Loading the full lobby from Steam…"
                 : snapshot.IsInDraft
-                    ? "While playing, Dota GSI usually only sends your own player during pick. Waiting for a match ID to load the lobby from OpenDota."
-                    : "Only your local player is in this GSI payload. Waiting for a match ID to load the lobby from OpenDota.";
+                    ? "While playing, Dota GSI usually only sends your own player during pick. Waiting for a match ID to load the lobby."
+                    : "Only your local player is in this GSI payload. Loading the full lobby from Steam…";
         }
 
         return "Players and heroes update when the roster changes. Notes and OpenDota/Steam enrichment load in the background.";

@@ -87,4 +87,44 @@ public class MatchRosterMergerTests
         Assert.Equal(10, merged.Count);
         Assert.All(merged, player => Assert.StartsWith("Gsi", player.Name));
     }
+
+    [Fact]
+    public void RetainIfRicher_KeepsFetchedLobbyAcrossSparseGsiUpdates()
+    {
+        var incoming = new[]
+        {
+            new MatchPlayer { SteamId = "1", Name = "Me", TeamName = "radiant", HeroName = "npc_dota_hero_pudge" },
+        };
+        var current = Enumerable.Range(1, 10)
+            .Select(i => new MatchPlayer
+            {
+                SteamId = i.ToString(),
+                Name = $"Player {i}",
+                TeamName = i <= 5 ? "radiant" : "dire",
+            })
+            .ToList();
+
+        var retained = MatchRosterMerger.RetainIfRicher(incoming, current, "100", "100");
+
+        Assert.Equal(10, retained.Count);
+        Assert.Equal("Me", retained.Single(player => player.SteamId == "1").Name);
+        Assert.Equal("npc_dota_hero_pudge", retained.Single(player => player.SteamId == "1").HeroName);
+    }
+
+    [Fact]
+    public void RetainIfRicher_DropsPreviousLobbyWhenMatchIdChanges()
+    {
+        var incoming = new[]
+        {
+            new MatchPlayer { SteamId = "99", Name = "Me", TeamName = "radiant" },
+        };
+        var current = Enumerable.Range(1, 10)
+            .Select(i => new MatchPlayer { SteamId = i.ToString(), Name = $"Old {i}", TeamName = "radiant" })
+            .ToList();
+
+        var retained = MatchRosterMerger.RetainIfRicher(incoming, current, "200", "100");
+
+        Assert.Single(retained);
+        Assert.Equal("99", retained[0].SteamId);
+    }
 }

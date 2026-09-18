@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Mango.Models;
+using Mango.Models.Gsi;
 
 namespace Mango.Services;
 
@@ -154,42 +155,32 @@ public sealed class OpenDotaService
         }
 
         var heroNames = await GetHeroInternalNameMapAsync(cancellationToken);
-        IReadOnlyList<MatchPlayer>? roster = null;
-
-        if (PlayerNotesMatch.IsUsableMatchId(matchId))
-        {
-            var details = await GetCachedAsync<OpenDotaMatchDetails>(
-                $"match_{matchId}_roster.json",
-                () => $"matches/{matchId}",
-                cancellationToken,
-                TimeSpan.FromSeconds(30));
-
-            roster = details?.Players is { Count: > 0 } players
-                ? players
-                    .Where(static player => player.AccountId > 0)
-                    .Select(player => ToMatchPlayerFromDetails(player, heroNames))
-                    .Where(static player => !string.IsNullOrWhiteSpace(player.SteamId))
-                    .ToList()
-                : null;
-        }
-
-        if (roster is null || roster.Count < 2)
-        {
-            var livePlayers = await FindLivePlayersAsync(matchId, localAccountId, cancellationToken);
-            if (livePlayers is { Count: > 0 })
-            {
-                roster = livePlayers
-                    .Where(static player => player.AccountId > 0)
-                    .Select(player => ToMatchPlayerFromLive(player, heroNames))
-                    .Where(static player => !string.IsNullOrWhiteSpace(player.SteamId))
-                    .ToList();
-            }
-        }
-
-        return roster is { Count: > 0 } ? roster : null;
+        // Live matches are not in matches/{id} until parsed. Waiting on that 404/522
+        // path used to burn the roster timeout and discard Steam results.
+        return await FetchLiveRosterAsync(matchId, localAccountId, heroNames, cancellationToken);
     }
 
-    private async Task<List<OpenDotaLivePlayer>?> FindLivePlayersAsync(
+    private async Task<IReadOnlyList<MatchPlayer>?> FetchLiveRosterAsync(
+        string matchId,
+        ulong? localAccountId,
+        IReadOnlyDictionary<int, string> heroNames,
+        CancellationToken cancellationToken)
+    {
+        var liveGame = await FindLiveGameAsync(matchId, localAccountId, cancellationToken);
+        var livePlayers = liveGame?.Players;
+        if (livePlayers is not { Count: > 0 })
+        {
+            return null;
+        }
+
+        return livePlayers
+            .Where(static player => player.AccountId > 0)
+            .Select(player => ToMatchPlayerFromLive(player, heroNames))
+            .Where(static player => !string.IsNullOrWhiteSpace(player.SteamId))
+            .ToList();
+    }
+
+    private async Task<OpenDotaLiveGame?> FindLiveGameAsync(
         string matchId,
         ulong? localAccountId,
         CancellationToken cancellationToken)
@@ -198,7 +189,7 @@ public sealed class OpenDotaService
             "live_games.json",
             static () => "live",
             cancellationToken,
-            TimeSpan.FromSeconds(20));
+            TimeSpan.FromSeconds(5));
 
         if (liveGames is null || liveGames.Count == 0)
         {
@@ -209,9 +200,9 @@ public sealed class OpenDotaService
         {
             var byMatchId = liveGames.FirstOrDefault(game =>
                 string.Equals(game.MatchId, matchId, StringComparison.OrdinalIgnoreCase));
-            if (byMatchId?.Players is { Count: > 0 } matchedPlayers)
+            if (byMatchId is not null)
             {
-                return matchedPlayers;
+                return byMatchId;
             }
         }
 
@@ -220,9 +211,8 @@ public sealed class OpenDotaService
             return null;
         }
 
-        var byAccount = liveGames.FirstOrDefault(game =>
+        return liveGames.FirstOrDefault(game =>
             game.Players?.Any(player => player.AccountId == localAccountId.Value) == true);
-        return byAccount?.Players;
     }
 
     private async Task<IReadOnlyDictionary<int, string>> GetHeroInternalNameMapAsync(
@@ -239,27 +229,6 @@ public sealed class OpenDotaService
         {
             return new Dictionary<int, string>();
         }
-    }
-
-    private static MatchPlayer ToMatchPlayerFromDetails(
-        OpenDotaMatchPlayer player,
-        IReadOnlyDictionary<int, string> heroNames)
-    {
-        var isRadiant = player.PlayerSlot < 128;
-        heroNames.TryGetValue(player.HeroId, out var heroName);
-        var teamSlot = isRadiant ? player.PlayerSlot : player.PlayerSlot - 128;
-
-        return new MatchPlayer
-        {
-            SteamId = player.AccountId.ToString(),
-            Name = FirstNonEmpty(player.PersonaName, player.AccountId.ToString()),
-            TeamName = isRadiant ? "radiant" : "dire",
-            TeamSlot = Math.Max(teamSlot, 0),
-            HeroName = heroName ?? string.Empty,
-            Kills = player.Kills,
-            Deaths = player.Deaths,
-            Assists = player.Assists,
-        };
     }
 
     private static MatchPlayer ToMatchPlayerFromLive(
@@ -629,43 +598,15 @@ public sealed class OpenDotaWinLoss
     public int Lose { get; set; }
 }
 
-public sealed class OpenDotaMatchDetails
-{
-    [JsonPropertyName("match_id")]
-    public long MatchId { get; set; }
-
-    [JsonPropertyName("players")]
-    public List<OpenDotaMatchPlayer> Players { get; set; } = [];
-}
-
-public sealed class OpenDotaMatchPlayer
-{
-    [JsonPropertyName("account_id")]
-    public ulong AccountId { get; set; }
-
-    [JsonPropertyName("player_slot")]
-    public int PlayerSlot { get; set; }
-
-    [JsonPropertyName("hero_id")]
-    public int HeroId { get; set; }
-
-    [JsonPropertyName("personaname")]
-    public string? PersonaName { get; set; }
-
-    [JsonPropertyName("kills")]
-    public int Kills { get; set; }
-
-    [JsonPropertyName("deaths")]
-    public int Deaths { get; set; }
-
-    [JsonPropertyName("assists")]
-    public int Assists { get; set; }
-}
-
 public sealed class OpenDotaLiveGame
 {
     [JsonPropertyName("match_id")]
+    [JsonConverter(typeof(GsiFlexibleStringJsonConverter))]
     public string MatchId { get; set; } = string.Empty;
+
+    [JsonPropertyName("server_steam_id")]
+    [JsonConverter(typeof(GsiFlexibleStringJsonConverter))]
+    public string? ServerSteamId { get; set; }
 
     [JsonPropertyName("players")]
     public List<OpenDotaLivePlayer>? Players { get; set; }

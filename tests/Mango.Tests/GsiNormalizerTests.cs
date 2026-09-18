@@ -212,6 +212,7 @@ public class GsiNormalizerTests
             {
               "map": {
                 "matchid": "8345123456",
+                "server_steam_id": "90123456789012345",
                 "game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION",
                 "clock_time": -45
               },
@@ -243,6 +244,7 @@ public class GsiNormalizerTests
 
         Assert.Equal("DOTA_GAMERULES_STATE_HERO_SELECTION", snapshot.GameState);
         Assert.Equal("8345123456", snapshot.MatchId);
+        Assert.Equal("90123456789012345", snapshot.ServerSteamId);
         Assert.Single(snapshot.Players);
         Assert.Equal("Mango Tester", snapshot.Players[0].Name);
         Assert.Equal("76561198000000001", snapshot.Players[0].SteamId);

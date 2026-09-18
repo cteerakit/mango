@@ -31,6 +31,14 @@ public sealed partial class MainWindow : Window
         AppServices.HotkeyService.Register(this);
     }
 
+    internal void ReloadAfterHotReload()
+    {
+        if (RootFrame.Content is ShellPage shell)
+        {
+            shell.ReloadCurrentPage();
+        }
+    }
+
     private void OnClosed(object sender, WindowEventArgs args)
     {
         AppServices.Shutdown();

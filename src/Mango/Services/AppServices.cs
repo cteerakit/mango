@@ -1,3 +1,5 @@
+using Mango.Models;
+
 namespace Mango.Services;
 
 public static class AppServices
@@ -19,10 +21,7 @@ public static class AppServices
         OpenDota = new OpenDotaService();
         SteamApi = new SteamWebApiService();
         MatchStore = new MatchStore();
-        MatchStore.Configure(
-            dispatcherQueue,
-            (matchId, accountId, cancellationToken) =>
-                OpenDota.GetMatchRosterAsync(matchId, accountId, cancellationToken));
+        MatchStore.Configure(dispatcherQueue, ResolveMatchRosterAsync);
         HudFonts = new HudFontService();
         HudFonts.Initialize();
         GsiListener = new GsiListenerService(MatchStore, Settings);
@@ -63,4 +62,142 @@ public static class AppServices
     }
 
     public static GsiInstallResult EnsureGsiConfigInstalled() => GsiInstaller.Install(Settings);
+
+    private static async Task<MatchRosterResolution?> ResolveMatchRosterAsync(
+        MatchSnapshot snapshot,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyDictionary<int, string> heroNames = new Dictionary<int, string>();
+        try
+        {
+            using var heroCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            heroCts.CancelAfter(TimeSpan.FromSeconds(2));
+            heroNames = (await OpenDota.GetHeroesAsync(heroCts.Token))
+                .GroupBy(static hero => hero.Id)
+                .ToDictionary(static group => group.Key, static group => group.First().Name);
+        }
+        catch
+        {
+            // Hero icons can stay empty; roster identities still load.
+        }
+
+        var localAccountId = SteamIdConverter.ToAccountId(snapshot.SteamId);
+        var sources = new List<Task<MatchRosterResolution?>>
+        {
+            ResolveFromTopLiveAsync(snapshot.MatchId, localAccountId, heroNames, cancellationToken),
+            ResolveFromOpenDotaLiveAsync(snapshot.MatchId, localAccountId, cancellationToken),
+        };
+
+        if (!string.IsNullOrWhiteSpace(snapshot.ServerSteamId))
+        {
+            sources.Add(ResolveFromRealtimeAsync(snapshot.ServerSteamId, heroNames, cancellationToken));
+        }
+
+        return await FirstRichRosterAsync(sources, cancellationToken);
+    }
+
+    private static async Task<MatchRosterResolution?> ResolveFromTopLiveAsync(
+        string matchId,
+        ulong? localAccountId,
+        IReadOnlyDictionary<int, string> heroNames,
+        CancellationToken cancellationToken)
+    {
+        var hit = await SteamApi.FindTopLiveGameAsync(
+            localAccountId,
+            matchId,
+            Settings.SteamApiKey,
+            heroNames,
+            cancellationToken);
+        if (hit is null)
+        {
+            return null;
+        }
+
+        return ToResolution(hit.Players, hit.ServerSteamId, "steam-top-live");
+    }
+
+    private static async Task<MatchRosterResolution?> ResolveFromRealtimeAsync(
+        string serverSteamId,
+        IReadOnlyDictionary<int, string> heroNames,
+        CancellationToken cancellationToken)
+    {
+        var players = await SteamApi.GetRealtimeRosterAsync(
+            serverSteamId,
+            Settings.SteamApiKey,
+            heroNames,
+            cancellationToken);
+        return ToResolution(players, serverSteamId, "steam-realtime");
+    }
+
+    private static async Task<MatchRosterResolution?> ResolveFromOpenDotaLiveAsync(
+        string matchId,
+        ulong? localAccountId,
+        CancellationToken cancellationToken)
+    {
+        var players = await OpenDota.GetMatchRosterAsync(matchId, localAccountId, cancellationToken);
+        return ToResolution(players, null, "opendota-live");
+    }
+
+    private static async Task<MatchRosterResolution?> FirstRichRosterAsync(
+        IReadOnlyList<Task<MatchRosterResolution?>> sources,
+        CancellationToken cancellationToken)
+    {
+        MatchRosterResolution? best = null;
+        var remaining = sources.ToList();
+        while (remaining.Count > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var done = await Task.WhenAny(remaining);
+            remaining.Remove(done);
+
+            MatchRosterResolution? result;
+            try
+            {
+                result = await done;
+            }
+            catch (OperationCanceledException)
+            {
+                continue;
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (result is null || result.IdentifiedCount == 0)
+            {
+                continue;
+            }
+
+            if (best is null || result.IdentifiedCount > best.IdentifiedCount)
+            {
+                best = result;
+            }
+
+            if (best.IdentifiedCount >= 10)
+            {
+                return best;
+            }
+        }
+
+        return best;
+    }
+
+    private static MatchRosterResolution? ToResolution(
+        IReadOnlyList<MatchPlayer>? players,
+        string? serverSteamId,
+        string source)
+    {
+        if (players is not { Count: > 0 } && string.IsNullOrWhiteSpace(serverSteamId))
+        {
+            return null;
+        }
+
+        return new MatchRosterResolution
+        {
+            Players = players,
+            ServerSteamId = serverSteamId,
+            Source = source,
+        };
+    }
 }

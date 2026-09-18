@@ -12,6 +12,7 @@ public sealed class GsiListenerService : IDisposable
     private HttpListener? _listener;
     private CancellationTokenSource? _cts;
     private Task? _listenTask;
+    private DateTimeOffset _lastGsiDumpUtc;
 
     public event Action<string>? StatusChanged;
 
@@ -85,6 +86,7 @@ public sealed class GsiListenerService : IDisposable
                 var payload = JsonSerializer.Deserialize<GsiPayload>(body);
                 if (payload is not null && IsAuthorized(payload))
                 {
+                    TryDumpGsiMeta(payload);
                     App.DispatcherQueue.TryEnqueue(() => _store.ApplyPayload(payload));
                 }
             }
@@ -101,6 +103,34 @@ public sealed class GsiListenerService : IDisposable
         finally
         {
             context.Response.Close();
+        }
+    }
+
+    private void TryDumpGsiMeta(GsiPayload payload)
+    {
+        if (DateTimeOffset.UtcNow - _lastGsiDumpUtc < TimeSpan.FromSeconds(15))
+        {
+            return;
+        }
+
+        _lastGsiDumpUtc = DateTimeOffset.UtcNow;
+        try
+        {
+            Directory.CreateDirectory(AppSettings.SettingsDirectory);
+            var meta = JsonSerializer.Serialize(new
+            {
+                matchId = payload.Map?.MatchId,
+                serverSteamId = payload.Map?.ServerSteamId,
+                gameState = payload.Map?.GameState,
+                allPlayerCount = payload.AllPlayers?.Count ?? 0,
+                localSteamId = payload.Player?.Local?.SteamId,
+                localName = payload.Player?.Local?.Name,
+            });
+            File.WriteAllText(Path.Combine(AppSettings.SettingsDirectory, "gsi-last-meta.json"), meta);
+        }
+        catch
+        {
+            // Diagnostics only.
         }
     }
 

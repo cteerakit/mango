@@ -103,6 +103,10 @@ public sealed class GsiMap
     [JsonConverter(typeof(GsiFlexibleStringJsonConverter))]
     public string? MatchId { get; set; }
 
+    [JsonPropertyName("server_steam_id")]
+    [JsonConverter(typeof(GsiFlexibleStringJsonConverter))]
+    public string? ServerSteamId { get; set; }
+
     [JsonPropertyName("radiant_score")]
     public int RadiantScore { get; set; }
 
@@ -207,13 +211,14 @@ internal sealed class GsiTeamJsonConverter : JsonConverter<int>
         writer.WriteNumberValue(value);
 }
 
-internal sealed class GsiFlexibleStringJsonConverter : JsonConverter<string?>
+public sealed class GsiFlexibleStringJsonConverter : JsonConverter<string?>
 {
     public override string? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         reader.TokenType switch
         {
             JsonTokenType.String => reader.GetString(),
             JsonTokenType.Number when reader.TryGetInt64(out var number) => number.ToString(),
+            JsonTokenType.Number when reader.TryGetUInt64(out var unsigned) => unsigned.ToString(),
             JsonTokenType.Null => null,
             _ => null,
         };
