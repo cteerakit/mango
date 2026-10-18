@@ -89,6 +89,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           pattern: release-*
@@ -99,6 +100,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          Copy-Item distribution/Mango-Test.cer release/Mango-Test.cer
           $assets = @(Get-ChildItem release -File | ForEach-Object FullName)
-          gh release create $env:GITHUB_REF_NAME @assets --repo $env:GITHUB_REPOSITORY --verify-tag --generate-notes --latest
+          gh release create $env:GITHUB_REF_NAME @assets --repo $env:GITHUB_REPOSITORY --verify-tag --generate-notes --notes-file distribution/release-notes.md --latest
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed.' }

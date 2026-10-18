@@ -4,13 +4,17 @@ Mango uses Windows App Installer to download and install signed MSIX updates. Us
 
 ## Configure signing
 
+The current release channel uses a self-signed test certificate. Its public certificate is committed at `distribution/Mango-Test.cer` and included in each release. Users must import it into `Cert:\LocalMachine\TrustedPeople` once from an Administrator PowerShell, then install the `.appinstaller`. See [the release installation instructions](../distribution/release-notes.md).
+
+GitHub stores the signing PFX and password in the repository secrets below. The local backup is in `%LOCALAPPDATA%\MangoSigning`, restricted to the current Windows user and SYSTEM. Its password backup is encrypted for the current Windows user with DPAPI. Keep this private backup for future releases. Do not regenerate the certificate for each update.
+
 1. Obtain a code-signing PFX with its private key. Its subject must match `Identity.Publisher` in `src/Mango/Package.appxmanifest`, currently `CN=AppPublisher`. For an existing installation, keep its package name and publisher. Changing either can create a separate app with separate data.
 2. Add the base64-encoded PFX as the GitHub Actions repository secret `MSIX_CERTIFICATE_BASE64`.
 3. Add its password as `MSIX_CERTIFICATE_PASSWORD`.
 
 Use the same signing identity for each release. For a self-signed certificate, users must trust its public certificate before installing. Do not distribute the private key. For public distribution, use a certificate trusted by the users' Windows devices.
 
-The workflow bundles .NET and the Windows App SDK, signs the packages, and requests a signing timestamp. It disables trimming because Mango uses reflection-based JSON serialization for settings and API responses. It removes the PFX from each runner after packaging.
+The workflow bundles .NET and the Windows App SDK, signs the packages, and requests a signing timestamp. It disables trimming because Mango uses reflection-based JSON serialization for settings and API responses. It removes the PFX from each runner after packaging. When switching to a publicly trusted certificate, update the distributed public certificate and release installation instructions along with the signing secrets.
 
 ## Publish a release
 
