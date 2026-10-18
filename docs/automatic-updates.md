@@ -1,76 +1,47 @@
-# Publishing automatic updates
+# Publishing Mango installers
 
-Mango uses Windows App Installer to download and install signed MSIX updates. Users install `Mango-x64.appinstaller` from a GitHub release once. Future releases use the same feed URL. New releases support Windows x64 only.
+Mango ships as `MangoSetup-x64.exe` on GitHub Releases. It installs for the current Windows user, adds a Start menu shortcut, and includes .NET and the Windows App SDK. Users do not need PowerShell, administrator access, or a certificate import.
 
-## Configure signing
+## Build locally
 
-Public release signing is not configured yet. The release workflow now runs `scripts/Test-MsixSignature.ps1` before uploading packages. This check rejects the Mango test certificate, unsigned packages, and signatures that fail Windows trust or timestamp verification. New releases will fail until trusted signing is configured.
+Run from the repository root with the .NET 10 SDK installed:
 
-For an individual based in Thailand, Azure Artifact Signing is currently unavailable. Microsoft limits individual registration to the United States and Canada. Obtain a publicly trusted individual code-signing certificate from a certificate authority that accepts Thai residents, or distribute through the Microsoft Store. Confirm country eligibility and support for automated MSIX signing before purchasing. Hardware or cloud-held keys require a signing integration rather than the PFX import used below.
+```powershell
+./scripts/Build-Installer.ps1 -Version 1.0.3.0
+```
 
-The verified certificate subject must match the package publisher. The current placeholder publisher, `CN=AppPublisher`, is not a verified identity. Changing it changes the package identity, so plan and verify settings and notes migration before publishing the first package under the new identity. Do not promise existing users an automatic upgrade across that change.
+The script downloads the pinned Inno Setup 6.7.3 compiler, verifies its SHA-256 checksum, and installs the compiler for the current user. To use an existing compiler, pass `-InnoSetupCompiler C:/path/to/ISCC.exe`.
 
-References: [Microsoft signing options](https://learn.microsoft.com/en-us/windows/msix/package/signing-package-overview), [Artifact Signing eligibility](https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart), and [Certum individual code-signing certificates](https://www.certum.eu/en/code-signing-certificates/).
-
-### Existing test releases
-
-The current release channel uses a self-signed test certificate. Its public certificate is committed at `distribution/Mango-Test.cer` and included in each release. Users must import it into `Cert:\LocalMachine\TrustedPeople` once from an Administrator PowerShell, then install the `.appinstaller`. See [the release installation instructions](../distribution/release-notes.md).
-
-GitHub stores the signing PFX and password in the repository secrets below. The local backup is in `%LOCALAPPDATA%\MangoSigning`, restricted to the current Windows user and SYSTEM. Its password backup is encrypted for the current Windows user with DPAPI. Keep this private backup for future releases. Do not regenerate the certificate for each update.
-
-1. Obtain a code-signing PFX with its private key. Its subject must match `Identity.Publisher` in `src/Mango/Package.appxmanifest`, currently `CN=AppPublisher`. For an existing installation, keep its package name and publisher. Changing either can create a separate app with separate data.
-2. Add the base64-encoded PFX as the GitHub Actions repository secret `MSIX_CERTIFICATE_BASE64`.
-3. Add its password as `MSIX_CERTIFICATE_PASSWORD`.
-
-Use the same signing identity for each release. For a self-signed certificate, users must trust its public certificate before installing. Do not distribute the private key. For public distribution, use a certificate trusted by the users' Windows devices.
-
-The workflow bundles .NET and the Windows App SDK, signs the packages, and requests a signing timestamp. It disables trimming because Mango uses reflection-based JSON serialization for settings and API responses. It removes the PFX from each runner after packaging. When switching to a publicly trusted certificate, update the distributed public certificate and release installation instructions along with the signing secrets.
+The output folder is `AppPackages/1.0.3.0-x64-setup`. Distribute `MangoSetup-x64.exe` and `SHA256SUMS.txt`. The `publish-*` subfolder is build staging and is not a separate download.
 
 ## Publish a release
 
-1. Commit and push the release changes.
-2. Create and push a tag with a higher four-part MSIX version. Each component must be between 0 and 65535. For example:
+1. Run `dotnet test tests/Mango.Tests/Mango.Tests.csproj -c Release`.
+2. Build the installer and run `./scripts/Test-Installer.ps1 -InstallerPath ./AppPackages/1.0.3.0-x64-setup/MangoSetup-x64.exe -Version 1.0.3.0` on a test Windows account. This installs, launches, reinstalls, and uninstalls Mango in a temporary folder.
+3. Commit and push the release changes.
+4. Create and push a new four-part version tag, for example `git tag v1.0.3.0` followed by `git push origin v1.0.3.0`. Each version part must be between 0 and 65535.
+5. Wait for **Release Mango** to pass tests, build and smoke-test the x64 installer, and publish the GitHub release.
 
-   ```powershell
-   git tag v1.0.1.0
-   git push origin v1.0.1.0
-   ```
-
-3. Wait for the **Release Mango** workflow to pass its tests and build the x64 installer. The workflow publishes one GitHub release with the MSIX package and App Installer feed.
-4. Direct new users to the `Mango-x64.appinstaller` asset. Existing x64 users enrolled in the feed receive the new version automatically.
-
-Every `v*` tag triggers a stable release. Do not use this workflow for prereleases or older versions: the workflow makes the release the latest one. Release publication fails if that release already exists. Resolve the publication failure before retrying; do not overwrite an MSIX that users have already installed.
-
-The feed has a stable URL such as `https://github.com/cteerakit/mango/releases/latest/download/Mango-x64.appinstaller`. Its package URL points to a specific release, such as `https://github.com/cteerakit/mango/releases/download/v1.0.1.0/Mango-x64.msix`. Keep old release assets available. The repository and assets must be publicly readable for users to update without authentication.
-
-## Verify an update before distribution
-
-1. Run `dotnet test tests/Mango.Tests/Mango.Tests.csproj -c Release` and `./scripts/Test-AppInstaller.ps1`.
-2. On a test Windows device with App Installer installed and the signing certificate trusted, install an earlier release through its `.appinstaller`. Save a player note and a setting.
-3. Publish a higher version to the test feed. In Mango, open **Settings > App updates** and select **Check for updates**. Confirm that Mango reports an available update and continues running.
-4. Close Mango and allow Windows to install the update. Reopen Mango and confirm that the version changed and the saved note and setting remain.
-5. Disconnect the network and check again. Confirm that Mango shows a retry message without crashing. Reconnect and retry.
-
-The generator tests validate the feed contents and reject insecure URLs and packages without signatures. They do not replace the two-version installation test. Windows verifies package signatures and publisher identity during installation.
-
-## Generate a feed for another host
-
-Build and sign the MSIX first, then run:
-
-```powershell
-./scripts/New-AppInstaller.ps1 `
-    -PackagePath ./Mango-x64.msix `
-    -PackageUri https://updates.example.com/1.0.1.0/Mango-x64.msix `
-    -AppInstallerUri https://updates.example.com/Mango-x64.appinstaller `
-    -OutputPath ./Mango-x64.appinstaller
-```
-
-Upload the MSIX before replacing the feed at its stable HTTPS URL. Serve `.appinstaller` as `application/appinstaller` and `.msix` as `application/msix`. Do not cache the stable feed indefinitely. The generator reads the version, identity, publisher, and architecture from the package itself.
+Every `v*` tag publishes a stable release as latest. Do not use this workflow for prereleases or older versions. Do not replace published installers. Fix release problems with a higher version.
 
 ## Update behavior
 
-The feed enables checks on every launch and background checks every eight hours. Windows handles downloads and applies updates when the app is not in use. Mango does not force the app to close. The Settings button checks availability; it does not force installation or promise that an update is already downloaded. Offline checks can fail and be retried later.
+In **Settings > App updates**, select **Check for updates**. Mango compares its installed version with the latest stable GitHub release. When a newer x64 installer is available, **Download update** opens its GitHub download in the default browser. Run the downloaded installer to update the existing installation.
 
-Direct `.msix` installations and development builds do not have an App Installer association. Settings reports that automatic updates are unavailable. Existing standalone installations need one installation through the `.appinstaller` to enroll. Do not uninstall Mango first, as uninstalling can remove local app data.
+Updates require this user action. Mango does not silently download or execute installers. Offline checks and GitHub rate limits show a retry message.
 
-Reference: [Microsoft App Installer update settings](https://learn.microsoft.com/en-us/windows/msix/app-installer/update-settings) and [App Installer APIs](https://learn.microsoft.com/en-us/windows/msix/app-installer/app-installer-documentation).
+## Move from the old MSIX release
+
+The EXE installer is a separate installation from MSIX. On first launch, Mango copies settings and player notes from the old package's `LocalCache/Local/Mango/settings.json` if `%LOCALAPPDATA%/Mango/settings.json` does not already exist. It preserves the original file and any existing unpackaged settings. API caches are rebuilt as needed.
+
+Keep the old Mango installed until you confirm that your settings and notes are present in the new app. If you already have unpackaged settings, export notes from the old app and import them into the new app under **Settings > Notes**. You can then remove the old MSIX installation through Windows Settings. Start the new Mango using its Start menu shortcut.
+
+Old `.appinstaller` feeds cannot move users to an EXE installer automatically. Keep old release assets available, and direct those users to `MangoSetup-x64.exe` once.
+
+## Signing
+
+The conventional EXE installer does not require an MSIX signing certificate. Current releases are unsigned, so Windows may show an unknown-publisher or SmartScreen warning. Smart App Control or organizational policies may block unsigned programs. Do not promise that an unsigned installer will run on every device.
+
+Publicly trusted signing remains an optional future improvement. It requires verified publisher credentials. MSIX test certificates and the old GitHub PFX secrets are not used by this workflow.
+
+References: [Unpackaged WinUI deployment](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/unpackage-winui-app) and [Windows app reputation](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation).

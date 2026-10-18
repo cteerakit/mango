@@ -60,6 +60,7 @@ public sealed class AppSettings
     {
         try
         {
+            SettingsMigration.ImportMsixSettings(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
             var path = File.Exists(SettingsPath) ? SettingsPath
                 : File.Exists(LegacySettingsPath) ? LegacySettingsPath
                 : null;

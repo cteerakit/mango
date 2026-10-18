@@ -71,6 +71,11 @@
                             AutomationProperties.AutomationId="CheckForUpdatesButton"
                             Content="Check for updates"
                             Click="OnCheckForUpdatesClick" />
+                        <HyperlinkButton
+                            x:Name="DownloadUpdateLink"
+                            AutomationProperties.AutomationId="DownloadUpdateLink"
+                            Content="Download update"
+                            Visibility="Collapsed" />
                     </StackPanel>
                 </Border>
 

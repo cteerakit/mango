@@ -1,57 +1,72 @@
-using Windows.ApplicationModel;
+using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Mango.Services;
 
+public sealed record AppUpdateResult(string Status, Uri? DownloadUri = null);
+
 public sealed class AppUpdateService
 {
-    public string Version { get; }
-    public bool CanCheckForUpdates { get; }
-    public string Status { get; }
+    private static readonly HttpClient Client = new() { Timeout = TimeSpan.FromSeconds(15) };
+    private readonly HttpClient _client;
+    private readonly System.Version _installedVersion;
 
-    public AppUpdateService()
+    public string Version => _installedVersion.ToString();
+    public string Status => "Check GitHub for a newer version. Download and run its installer to update; your settings and notes are kept.";
+
+    public AppUpdateService(HttpClient? client = null, System.Version? installedVersion = null)
     {
-        try
-        {
-            var package = Package.Current;
-            var version = package.Id.Version;
-            Version = $"{version.Major}.{version.Minor}.{version.Build}.{version.Revision}";
-            CanCheckForUpdates = !package.IsDevelopmentMode && package.GetAppInstallerInfo() is not null;
-            Status = package.IsDevelopmentMode
-                ? "Automatic updates are unavailable in this development build."
-                : CanCheckForUpdates
-                ? "Windows checks for updates on launch and in the background. Updates are installed when Mango is not in use."
-                : "Automatic updates require the Mango App Installer download. Install it once to enable future automatic updates. Your settings and notes are kept.";
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException)
-        {
-            System.Diagnostics.Debug.WriteLine($"App Installer is unavailable: {ex}");
-            Version = "Development build";
-            Status = "Automatic updates are unavailable in this development build.";
-        }
+        _client = client ?? Client;
+        _installedVersion = installedVersion ?? typeof(AppUpdateService).Assembly.GetName().Version ?? new(1, 0, 0, 0);
     }
 
-    public async Task<string> CheckForUpdatesAsync()
+    public async Task<AppUpdateResult> CheckForUpdatesAsync(CancellationToken cancellationToken = default)
     {
-        if (!CanCheckForUpdates)
-        {
-            return Status;
-        }
-
         try
         {
-            var result = await Package.Current.CheckUpdateAvailabilityAsync();
-            return result.Availability switch
+            using var request = new HttpRequestMessage(HttpMethod.Get,
+                "https://api.github.com/repos/cteerakit/mango/releases/latest");
+            request.Headers.UserAgent.ParseAdd($"Mango/{Version}");
+            request.Headers.Accept.ParseAdd("application/vnd.github+json");
+            using var response = await _client.SendAsync(request, cancellationToken);
+            response.EnsureSuccessStatusCode();
+            var release = await response.Content.ReadFromJsonAsync<GitHubRelease>(cancellationToken);
+            if (release is null || release.Draft || release.Prerelease ||
+                release.Tag is not { } tag || !tag.StartsWith('v') ||
+                !System.Version.TryParse(tag[1..], out var latestVersion))
             {
-                PackageUpdateAvailability.NoUpdates => "Mango is up to date.",
-                PackageUpdateAvailability.Available or PackageUpdateAvailability.Required =>
-                    "An update is available. Windows will install it automatically when Mango is not in use. You can keep using Mango until then.",
-                _ => "Could not check for updates. Check your internet connection and try again. Windows will also retry in the background.",
-            };
+                throw new InvalidDataException("GitHub returned an invalid stable release.");
+            }
+
+            if (latestVersion <= _installedVersion)
+            {
+                return new("Mango is up to date.");
+            }
+
+            var download = new Uri($"https://github.com/cteerakit/mango/releases/download/{tag}/MangoSetup-x64.exe");
+            if (release.Assets is null || !release.Assets.Any(asset =>
+                asset is not null && asset.Name == "MangoSetup-x64.exe" && asset.DownloadUrl == download.AbsoluteUri))
+            {
+                return new("A newer release exists, but its x64 setup installer is not available yet. Try again later.");
+            }
+
+            return new($"Mango {latestVersion} is available. Download and run the installer to update.", download);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException or InvalidDataException)
         {
             System.Diagnostics.Debug.WriteLine($"Update check failed: {ex}");
-            return "Could not check for updates. Check your internet connection and try again. Windows will also retry in the background.";
+            return new("Could not check for updates. Check your internet connection and try again.");
         }
     }
+
+    private sealed record GitHubRelease(
+        [property: JsonPropertyName("tag_name")] string? Tag,
+        [property: JsonPropertyName("draft")] bool Draft,
+        [property: JsonPropertyName("prerelease")] bool Prerelease,
+        [property: JsonPropertyName("assets")] GitHubAsset[]? Assets);
+
+    private sealed record GitHubAsset(
+        [property: JsonPropertyName("name")] string? Name,
+        [property: JsonPropertyName("browser_download_url")] string? DownloadUrl);
 }

@@ -24,20 +24,23 @@ public sealed partial class SettingsPage : Page
         LoadStratzApiToken();
         AppVersionText.Text = $"Version {_updates.Version}";
         AppUpdateStatus.Text = _updates.Status;
-        CheckForUpdatesButton.IsEnabled = _updates.CanCheckForUpdates;
     }
 
     private async void OnCheckForUpdatesClick(object sender, RoutedEventArgs e)
     {
         CheckForUpdatesButton.IsEnabled = false;
         AppUpdateStatus.Text = "Checking for updates…";
+        DownloadUpdateLink.Visibility = Visibility.Collapsed;
         try
         {
-            AppUpdateStatus.Text = await _updates.CheckForUpdatesAsync();
+            var result = await _updates.CheckForUpdatesAsync();
+            AppUpdateStatus.Text = result.Status;
+            DownloadUpdateLink.NavigateUri = result.DownloadUri;
+            DownloadUpdateLink.Visibility = result.DownloadUri is null ? Visibility.Collapsed : Visibility.Visible;
         }
         finally
         {
-            CheckForUpdatesButton.IsEnabled = _updates.CanCheckForUpdates;
+            CheckForUpdatesButton.IsEnabled = true;
         }
     }
 

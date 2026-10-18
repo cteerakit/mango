@@ -1,18 +1,15 @@
-## Install Mango with automatic updates
+## Install Mango
 
-This is a self-signed test release. Trust the public test certificate once on each Windows PC, then install through App Installer. Future releases use the same certificate and update automatically.
+Download **MangoSetup-x64.exe**, open it, and follow the setup wizard. Mango installs for your Windows user and adds a Start menu shortcut. No administrator access, PowerShell, or certificate import is required. Runtimes are included.
 
-1. Download [Mango-Test.cer](https://github.com/cteerakit/mango/releases/latest/download/Mango-Test.cer).
-2. Open PowerShell **as Administrator** in the download folder and run:
+This installer is unsigned. Windows may show an unknown-publisher or SmartScreen warning, and some device security policies block unsigned apps.
 
-   ```powershell
-   Import-Certificate -FilePath ./Mango-Test.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople
-   ```
+## Updates
 
-   The certificate subject is `CN=AppPublisher`. Its thumbprint is `EF17E38930F9225A7F14BF52F9B487381B74BCB7`.
+Open **Settings > App updates > Check for updates**. When an update is available, select **Download update** and run the downloaded installer. Your settings and player notes are kept.
 
-3. Download and open [Mango for Windows x64](https://github.com/cteerakit/mango/releases/latest/download/Mango-x64.appinstaller). New releases support Windows x64 only.
+## Existing MSIX users
 
-If Windows does not recognize `.appinstaller` files, install Microsoft's App Installer from the Microsoft Store first.
+Install the EXE version before removing the old Mango. The new app imports the old package's settings and notes if no unpackaged settings already exist. Confirm your data is present before uninstalling the old version. If needed, use **Settings > Notes** to export from the old app and import into the new app.
 
-Existing users should install through the `.appinstaller` once to enroll in updates. Keep Mango installed to preserve settings and notes. Windows then checks for updates on launch and in the background and installs them when Mango is not in use. You can check availability in **Settings > App updates**.
+Windows x64 only.

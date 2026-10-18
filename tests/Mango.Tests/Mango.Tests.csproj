@@ -16,6 +16,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Mango.Core\Mango.Core.csproj" />
+    <Compile Include="..\..\src\Mango\Services\AppUpdateService.cs" Link="Services\AppUpdateService.cs" />
+    <Compile Include="..\..\src\Mango\Services\SettingsMigration.cs" Link="Services\SettingsMigration.cs" />
     <Compile Include="..\..\src\Mango\Services\MatchHistoryLoader.cs" Link="Services\MatchHistoryLoader.cs" />
     <Compile Include="..\..\src\Mango\Services\OpenDotaService.cs" Link="Services\OpenDotaService.cs" />
     <Compile Include="..\..\src\Mango\Services\OpenDotaService.MatchHistory.cs" Link="Services\OpenDotaService.MatchHistory.cs" />

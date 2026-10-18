@@ -1,5 +1,4 @@
 using Microsoft.UI.Xaml.Media;
-using Windows.Storage;
 
 namespace Mango.Services;
 
@@ -29,7 +28,7 @@ public sealed class HudFontService
                 return;
             }
 
-            var targetFolder = Path.Combine(ApplicationData.Current.LocalFolder.Path, FontsSubfolder);
+            var targetFolder = Path.Combine(AppContext.BaseDirectory, "Assets", FontsSubfolder);
             Directory.CreateDirectory(targetFolder);
 
             if (!TryStageFont(sourceFolder, targetFolder, RegularFile) ||
@@ -38,8 +37,8 @@ public sealed class HudFontService
                 return;
             }
 
-            LabelFont = new FontFamily($"ms-appdata:///local/{FontsSubfolder}/{RegularFile}#Radiance");
-            ValueFont = new FontFamily($"ms-appdata:///local/{FontsSubfolder}/{SemiboldFile}#Radiance Semibold");
+            LabelFont = new FontFamily($"ms-appx:///Assets/{FontsSubfolder}/{RegularFile}#Radiance");
+            ValueFont = new FontFamily($"ms-appx:///Assets/{FontsSubfolder}/{SemiboldFile}#Radiance Semibold");
             UsesGameFont = true;
         }
         catch

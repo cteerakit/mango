@@ -41,7 +41,7 @@ dotnet run --project src/Mango/Mango.csproj
 
 ## Reload during development
 
-For in-place XAML and C# Hot Reload, open `Mango.sln` in Visual Studio, select the **Mango (Package)** launch profile and **Debug / x64** (or **ARM64**), then press **F5**. Save supported edits while the debugger is attached. Some edits require restarting the app. See [Microsoft's WinUI runtime design tools guide](https://learn.microsoft.com/en-us/windows/apps/develop/ui/xaml-runtime-design-tools).
+For in-place XAML and C# Hot Reload, open `Mango.sln` in Visual Studio, select the **Mango (Unpackaged)** launch profile and **Debug / x64**, then press **F5**. Save supported edits while the debugger is attached. Some edits require restarting the app. See [Microsoft's WinUI runtime design tools guide](https://learn.microsoft.com/en-us/windows/apps/develop/ui/xaml-runtime-design-tools).
 
 For command-line development, close any running Mango instance, then run:
 
@@ -86,14 +86,16 @@ Use **Save settings** in the shell after changing panel toggles or opacity on th
 
 ## Package
 
-For automatic updates, install the `Mango-x64.appinstaller` asset from the latest GitHub release. New releases support Windows x64 only. Windows checks for updates on launch and every eight hours in the background, then installs updates when Mango is not in use. **Settings > App updates** shows the installed version and lets you check for updates manually.
+Download `MangoSetup-x64.exe` from the [latest GitHub release](https://github.com/cteerakit/mango/releases/latest). Run it to install Mango for your Windows user. It includes the runtimes and adds a Start menu shortcut. No administrator access, PowerShell, or certificate import is required. The unsigned installer may show a Windows security warning, and some security policies block unsigned apps.
 
-Existing users who installed a standalone `.msix` must install through the `.appinstaller` once to enroll. Keep the same package identity and signing publisher to preserve settings and player notes. See [Publishing automatic updates](docs/automatic-updates.md) for release setup.
+In **Settings > App updates**, select **Check for updates**, then **Download update** when a newer installer is available. Run the downloaded installer to update. Settings and notes are kept.
 
-MSIX packaging is enabled via the Windows App SDK project. Publish from Visual Studio (**Package and Publish**) or:
+Existing MSIX users should install the EXE version and confirm their settings and notes before removing the old app. See [Publishing Mango installers](docs/automatic-updates.md) for migration details and release setup.
+
+To build the self-contained Windows x64 installer:
 
 ```powershell
-dotnet publish src/Mango/Mango.csproj -c Release
+./scripts/Build-Installer.ps1 -Version 1.0.3.0
 ```
 
 ## Architecture
