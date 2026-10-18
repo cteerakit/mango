@@ -4,6 +4,16 @@ Mango uses Windows App Installer to download and install signed MSIX updates. Us
 
 ## Configure signing
 
+Public release signing is not configured yet. The release workflow now runs `scripts/Test-MsixSignature.ps1` before uploading packages. This check rejects the Mango test certificate, unsigned packages, and signatures that fail Windows trust or timestamp verification. New releases will fail until trusted signing is configured.
+
+For an individual based in Thailand, Azure Artifact Signing is currently unavailable. Microsoft limits individual registration to the United States and Canada. Obtain a publicly trusted individual code-signing certificate from a certificate authority that accepts Thai residents, or distribute through the Microsoft Store. Confirm country eligibility and support for automated MSIX signing before purchasing. Hardware or cloud-held keys require a signing integration rather than the PFX import used below.
+
+The verified certificate subject must match the package publisher. The current placeholder publisher, `CN=AppPublisher`, is not a verified identity. Changing it changes the package identity, so plan and verify settings and notes migration before publishing the first package under the new identity. Do not promise existing users an automatic upgrade across that change.
+
+References: [Microsoft signing options](https://learn.microsoft.com/en-us/windows/msix/package/signing-package-overview), [Artifact Signing eligibility](https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart), and [Certum individual code-signing certificates](https://www.certum.eu/en/code-signing-certificates/).
+
+### Existing test releases
+
 The current release channel uses a self-signed test certificate. Its public certificate is committed at `distribution/Mango-Test.cer` and included in each release. Users must import it into `Cert:\LocalMachine\TrustedPeople` once from an Administrator PowerShell, then install the `.appinstaller`. See [the release installation instructions](../distribution/release-notes.md).
 
 GitHub stores the signing PFX and password in the repository secrets below. The local backup is in `%LOCALAPPDATA%\MangoSigning`, restricted to the current Windows user and SYSTEM. Its password backup is encrypted for the current Windows user with DPAPI. Keep this private backup for future releases. Do not regenerate the certificate for each update.

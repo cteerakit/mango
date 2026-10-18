@@ -67,6 +67,7 @@ jobs:
           $packages = @(Get-ChildItem "$env:RUNNER_TEMP/packages" -Recurse -Filter '*.msix' |
             Where-Object { $_.DirectoryName -notmatch '[\\/]Dependencies([\\/]|$)' })
           if ($packages.Count -ne 1) { throw "Expected one Mango MSIX; found $($packages.Count)." }
+          ./scripts/Test-MsixSignature.ps1 -PackagePath $packages[0].FullName
           New-Item -ItemType Directory -Path release -Force | Out-Null
           $name = "Mango-$architecture.msix"
           Copy-Item -LiteralPath $packages[0].FullName -Destination "release/$name"
