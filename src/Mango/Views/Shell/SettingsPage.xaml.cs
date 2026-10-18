@@ -10,12 +10,30 @@ public sealed partial class SettingsPage : Page
 {
     private bool _notesTransferBusy;
     private bool _suppressSteamKeyChange;
+    private readonly AppUpdateService _updates = new();
 
     public SettingsPage()
     {
         InitializeComponent();
         ShellContentLayout.Attach(LayoutRoot, ContentColumn);
         LoadSteamApiKey();
+        AppVersionText.Text = $"Version {_updates.Version}";
+        AppUpdateStatus.Text = _updates.Status;
+        CheckForUpdatesButton.IsEnabled = _updates.CanCheckForUpdates;
+    }
+
+    private async void OnCheckForUpdatesClick(object sender, RoutedEventArgs e)
+    {
+        CheckForUpdatesButton.IsEnabled = false;
+        AppUpdateStatus.Text = "Checking for updates…";
+        try
+        {
+            AppUpdateStatus.Text = await _updates.CheckForUpdatesAsync();
+        }
+        finally
+        {
+            CheckForUpdatesButton.IsEnabled = _updates.CanCheckForUpdates;
+        }
     }
 
     private void LoadSteamApiKey()

@@ -1,0 +1,104 @@
+name: Release Mango
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet test tests/Mango.Tests/Mango.Tests.csproj -c Release
+      - shell: pwsh
+        run: ./scripts/Test-AppInstaller.ps1
+
+  package:
+    needs: test
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        platform: [x64, ARM64, x86]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Set package version and signing certificate
+        shell: pwsh
+        env:
+          SIGNING_CERTIFICATE: ${{ secrets.MSIX_CERTIFICATE_BASE64 }}
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          if ($version -notmatch '^\d+\.\d+\.\d+\.\d+$' -or
+              @($version.Split('.') | Where-Object { [long]$_ -gt 65535 }).Count -gt 0) {
+              throw 'Use a four-part MSIX version tag, for example v1.0.1.0 (each part 0–65535).'
+          }
+          if (-not $env:SIGNING_CERTIFICATE) { throw 'Set the MSIX_CERTIFICATE_BASE64 repository secret.' }
+          [xml]$manifest = Get-Content src/Mango/Package.appxmanifest
+          $manifest.Package.Identity.Version = $version
+          $manifest.Save((Join-Path $PWD 'src/Mango/Package.appxmanifest'))
+          $certificatePath = Join-Path $env:RUNNER_TEMP 'mango-signing.pfx'
+          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:SIGNING_CERTIFICATE))
+          "PackageCertificateKeyFile=$certificatePath" >> $env:GITHUB_ENV
+      - name: Build signed self-contained MSIX
+        shell: pwsh
+        env:
+          PackageCertificatePassword: ${{ secrets.MSIX_CERTIFICATE_PASSWORD }}
+        run: |
+          $platform = '${{ matrix.platform }}'
+          dotnet publish src/Mango/Mango.csproj -c Release -p:Platform=$platform -r "win-$($platform.ToLowerInvariant())" `
+            -p:GenerateAppxPackageOnBuild=true -p:AppxPackageSigningEnabled=true -p:AppxBundle=Never -p:AppxAutoIncrementPackageRevision=false `
+            -p:AppxPackageDir="$env:RUNNER_TEMP/packages/" -p:UapAppxPackageBuildMode=SideloadOnly `
+            -p:SelfContained=true -p:WindowsAppSDKSelfContained=true -p:PublishTrimmed=false `
+            -p:AppxPackageSigningTimestampServerUrl=http://timestamp.digicert.com
+          if ($LASTEXITCODE -ne 0) { throw 'MSIX publish failed.' }
+      - name: Generate automatic update feed
+        shell: pwsh
+        run: |
+          $architecture = '${{ matrix.platform }}'.ToLowerInvariant()
+          $packages = @(Get-ChildItem "$env:RUNNER_TEMP/packages" -Recurse -Filter '*.msix' |
+            Where-Object { $_.DirectoryName -notmatch '[\\/]Dependencies([\\/]|$)' })
+          if ($packages.Count -ne 1) { throw "Expected one Mango MSIX; found $($packages.Count)." }
+          New-Item -ItemType Directory -Path release -Force | Out-Null
+          $name = "Mango-$architecture.msix"
+          Copy-Item -LiteralPath $packages[0].FullName -Destination "release/$name"
+          $base = "https://github.com/$env:GITHUB_REPOSITORY/releases"
+          ./scripts/New-AppInstaller.ps1 -PackagePath "release/$name" `
+            -PackageUri "$base/download/$env:GITHUB_REF_NAME/$name" `
+            -AppInstallerUri "$base/latest/download/Mango-$architecture.appinstaller" `
+            -OutputPath "release/Mango-$architecture.appinstaller"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: release/*
+      - name: Remove signing certificate
+        if: always()
+        shell: pwsh
+        run: Remove-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'mango-signing.pfx') -ErrorAction SilentlyContinue
+
+  release:
+    needs: package
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: release
+      - name: Publish update channel
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = @(Get-ChildItem release -File | ForEach-Object FullName)
+          gh release create $env:GITHUB_REF_NAME @assets --repo $env:GITHUB_REPOSITORY --verify-tag --generate-notes --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed.' }

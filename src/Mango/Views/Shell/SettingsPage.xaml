@@ -24,9 +24,31 @@
                     <TextBlock Text="Settings" Style="{StaticResource TitleTextBlockStyle}" />
                     <TextBlock
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="API keys and player-note backup."
+                        Text="App updates, API keys, and player-note backup."
                         TextWrapping="WrapWholeWords" />
                 </StackPanel>
+
+                <Border
+                    Padding="20"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="App updates" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <TextBlock x:Name="AppVersionText" />
+                        <TextBlock
+                            x:Name="AppUpdateStatus"
+                            AutomationProperties.LiveSetting="Polite"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            TextWrapping="WrapWholeWords" />
+                        <Button
+                            x:Name="CheckForUpdatesButton"
+                            AutomationProperties.AutomationId="CheckForUpdatesButton"
+                            Content="Check for updates"
+                            Click="OnCheckForUpdatesClick" />
+                    </StackPanel>
+                </Border>
 
                 <Border
                     Padding="20"

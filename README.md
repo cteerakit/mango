@@ -68,6 +68,10 @@ Use **Save settings** in the shell after changing panel toggles or opacity on th
 
 ## Package
 
+For automatic updates, install the `Mango-<architecture>.appinstaller` asset from the latest GitHub release. Windows checks for updates on launch and every eight hours in the background, then installs updates when Mango is not in use. **Settings > App updates** shows the installed version and lets you check for updates manually.
+
+Existing users who installed a standalone `.msix` must install through the `.appinstaller` once to enroll. Keep the same package identity and signing publisher to preserve settings and player notes. See [Publishing automatic updates](docs/automatic-updates.md) for release setup.
+
 MSIX packaging is enabled via the Windows App SDK project. Publish from Visual Studio (**Package and Publish**) or:
 
 ```powershell
