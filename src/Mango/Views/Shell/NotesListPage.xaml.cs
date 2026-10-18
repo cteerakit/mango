@@ -63,6 +63,7 @@ public sealed partial class NotesListPage : Page
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
         };
 
         _dialogOpen = true;
@@ -108,6 +109,7 @@ public sealed partial class NotesListPage : Page
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
         };
 
         _dialogOpen = true;

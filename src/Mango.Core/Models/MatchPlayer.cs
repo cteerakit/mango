@@ -1,3 +1,5 @@
+using Mango.Services;
+
 namespace Mango.Models;
 
 public sealed class MatchPlayer
@@ -20,6 +22,9 @@ public sealed class MatchPlayer
     public string Note { get; set; } = string.Empty;
     public int LikeCount { get; set; }
     public int DislikeCount { get; set; }
+    public bool IsToxic { get; set; }
+    public bool CanMarkToxic => !string.IsNullOrWhiteSpace(SteamId);
+    public string ToxicToolTip => !CanMarkToxic ? "Player has no ID." : IsToxic ? "Remove toxic mark" : "Mark as toxic player";
     public bool CanVote { get; set; }
     public string VoteUnavailableReason { get; set; } = string.Empty;
     public string CurrentMatchVote { get; set; } = string.Empty;
@@ -29,11 +34,19 @@ public sealed class MatchPlayer
     public string RankIconUrl { get; set; } = string.Empty;
     public string RankStarUrl { get; set; } = string.Empty;
     public string RankLabel { get; set; } = string.Empty;
-    public string WinRateLabel { get; set; } = string.Empty;
+    /// <summary>True when the medal is inferred (match history or lobby average) rather than confirmed or set manually.</summary>
+    public bool RankIsEstimated { get; set; }
+    public int? ReportedRankTier { get; set; }
+    public bool CanEditRank => PlayerRanks.CanOverride(IsProfilePrivate, ReportedRankTier)
+        && SteamIdConverter.ToAccountId(SteamId) is not null;
     public string MatchesLabel { get; set; } = string.Empty;
     public bool IsProfilePrivate { get; set; }
-    public string OverviewSubtitle => WinRateLabel;
+    public bool IsLocalPlayer { get; set; }
+    public PlayerMatchHistory History { get; set; } = new();
 
+    public bool HasHeroLevel => HeroLevel > 0;
+    public string HeroNameUpper => DisplayHeroName.ToUpperInvariant();
+    public string GoldLabel => Gold > 0 ? Gold.ToString("N0") : "—";
     public string Kda => $"{Kills}/{Deaths}/{Assists}";
     public string LastHitsDenies => $"{LastHits}/{Denies}";
     public string DisplayHeroName => FormatHeroName(HeroName);

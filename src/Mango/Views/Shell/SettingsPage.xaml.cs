@@ -10,13 +10,18 @@ public sealed partial class SettingsPage : Page
 {
     private bool _notesTransferBusy;
     private bool _suppressSteamKeyChange;
+    private bool _suppressStratzTokenChange;
     private readonly AppUpdateService _updates = new();
 
     public SettingsPage()
     {
         InitializeComponent();
         ShellContentLayout.Attach(LayoutRoot, ContentColumn);
+        ThemeSelector.SelectedItem = ThemeSelector.Items.OfType<RadioButton>()
+            .First(item => (string)item.Tag == AppServices.Settings.Theme.ToString());
+        ThemeSelector.SelectionChanged += OnThemeSelectionChanged;
         LoadSteamApiKey();
+        LoadStratzApiToken();
         AppVersionText.Text = $"Version {_updates.Version}";
         AppUpdateStatus.Text = _updates.Status;
         CheckForUpdatesButton.IsEnabled = _updates.CanCheckForUpdates;
@@ -33,6 +38,17 @@ public sealed partial class SettingsPage : Page
         finally
         {
             CheckForUpdatesButton.IsEnabled = _updates.CanCheckForUpdates;
+        }
+    }
+
+    private void OnThemeSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ThemeSelector.SelectedItem is RadioButton { Tag: string theme }
+            && Enum.TryParse<AppTheme>(theme, out var preference))
+        {
+            AppServices.Settings.Theme = preference;
+            ((MainWindow)App.Window).ApplyTheme();
+            AppServices.Settings.Save();
         }
     }
 
@@ -58,6 +74,30 @@ public sealed partial class SettingsPage : Page
         SteamApiKeyStatus.Text = string.IsNullOrWhiteSpace(AppServices.Settings.SteamApiKey)
             ? "Steam API key cleared."
             : "Steam API key saved.";
+    }
+
+    private void LoadStratzApiToken()
+    {
+        _suppressStratzTokenChange = true;
+        StratzApiTokenBox.Password = AppServices.Settings.StratzApiToken;
+        _suppressStratzTokenChange = false;
+        StratzApiTokenStatus.Text = string.IsNullOrWhiteSpace(AppServices.Settings.StratzApiToken)
+            ? "No STRATZ token saved. Positions are estimated."
+            : "STRATZ token saved on this PC.";
+    }
+
+    private void OnStratzApiTokenChanged(object sender, RoutedEventArgs e)
+    {
+        if (_suppressStratzTokenChange)
+        {
+            return;
+        }
+
+        AppServices.Settings.StratzApiToken = StratzApiTokenBox.Password.Trim();
+        AppServices.Settings.Save();
+        StratzApiTokenStatus.Text = string.IsNullOrWhiteSpace(AppServices.Settings.StratzApiToken)
+            ? "STRATZ token cleared. Positions are estimated."
+            : "STRATZ token saved.";
     }
 
     private void OnViewNotesClick(object sender, RoutedEventArgs e)
@@ -178,6 +218,7 @@ public sealed partial class SettingsPage : Page
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
         };
 
         var result = await dialog.ShowAsync();
@@ -197,6 +238,7 @@ public sealed partial class SettingsPage : Page
             Content = message,
             CloseButtonText = "OK",
             XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
         };
         await dialog.ShowAsync();
     }

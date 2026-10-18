@@ -76,6 +76,7 @@
                         <HyperlinkButton
                             Padding="0"
                             Content="Open developer options"
+                            AutomationProperties.AutomationId="OpenDeveloperOptionsButton"
                             Click="OnDeveloperClick" />
                     </StackPanel>
                 </Border>

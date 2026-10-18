@@ -68,9 +68,4 @@ public sealed partial class StatusPage : Page
     private void OnReinstallClick(object sender, RoutedEventArgs e) =>
         _viewModel?.ReinstallGsiConfigCommand.Execute(null);
 
-    private void OnShowOverlayClick(object sender, RoutedEventArgs e) =>
-        _viewModel?.ShowOverlayCommand.Execute(null);
-
-    private void OnHideOverlayClick(object sender, RoutedEventArgs e) =>
-        _viewModel?.HideOverlayCommand.Execute(null);
 }

@@ -4,12 +4,14 @@ namespace Mango.Services;
 
 public static class AppServices
 {
+    private static LocalSteamRosterService _localSteamRoster = new([]);
     public static AppSettings Settings { get; private set; } = AppSettings.Load();
     public static MatchStore MatchStore { get; private set; } = new();
     public static GsiListenerService GsiListener { get; private set; } = null!;
     public static GsiConfigInstaller GsiInstaller { get; private set; } = new();
-    public static OpenDotaService OpenDota { get; private set; } = new();
+    public static OpenDotaService OpenDota { get; private set; } = new(Path.Combine(AppSettings.SettingsDirectory, "cache"));
     public static SteamWebApiService SteamApi { get; private set; } = new();
+    public static StratzService Stratz { get; private set; } = new(Path.Combine(AppSettings.SettingsDirectory, "cache"));
     public static TimerService TimerService { get; private set; } = null!;
     public static OverlayWindowService OverlayService { get; private set; } = null!;
     public static HotkeyService HotkeyService { get; private set; } = null!;
@@ -18,8 +20,10 @@ public static class AppServices
     public static void Initialize(Microsoft.UI.Dispatching.DispatcherQueue dispatcherQueue)
     {
         Settings = AppSettings.Load();
-        OpenDota = new OpenDotaService();
+        OpenDota = new OpenDotaService(Path.Combine(AppSettings.SettingsDirectory, "cache"));
         SteamApi = new SteamWebApiService();
+        Stratz = new StratzService(Path.Combine(AppSettings.SettingsDirectory, "cache"));
+        _localSteamRoster = new LocalSteamRosterService(GsiConfigInstaller.FindDotaInstallPaths());
         MatchStore = new MatchStore();
         MatchStore.Configure(dispatcherQueue, ResolveMatchRosterAsync);
         HudFonts = new HudFontService();
@@ -35,9 +39,9 @@ public static class AppServices
         Settings.OverlayInteractive = false;
         Settings.Save();
 
-        if (Settings.DebugOverlayPreview)
+        if (Settings.ShowMockData)
         {
-            MatchStore.ApplyDebugPreview();
+            MatchStore.ApplyMockData();
         }
     }
 
@@ -49,16 +53,15 @@ public static class AppServices
         HotkeyService.Dispose();
     }
 
-    public static void ApplyDebugOverlayMode()
+    public static void ApplyMockDataMode()
     {
-        if (Settings.DebugOverlayPreview)
+        if (Settings.ShowMockData)
         {
-            MatchStore.ApplyDebugPreview();
-            OverlayService.ShowOverlay();
+            MatchStore.ApplyMockData();
             return;
         }
 
-        MatchStore.ClearDebugPreview();
+        MatchStore.ClearMockData();
     }
 
     public static GsiInstallResult EnsureGsiConfigInstalled() => GsiInstaller.Install(Settings);
@@ -84,13 +87,14 @@ public static class AppServices
         var localAccountId = SteamIdConverter.ToAccountId(snapshot.SteamId);
         var sources = new List<Task<MatchRosterResolution?>>
         {
+            _localSteamRoster.GetRosterAsync(snapshot, cancellationToken),
             ResolveFromTopLiveAsync(snapshot.MatchId, localAccountId, heroNames, cancellationToken),
             ResolveFromOpenDotaLiveAsync(snapshot.MatchId, localAccountId, cancellationToken),
         };
 
         if (!string.IsNullOrWhiteSpace(snapshot.ServerSteamId))
         {
-            sources.Add(ResolveFromRealtimeAsync(snapshot.ServerSteamId, heroNames, cancellationToken));
+            sources.Add(ResolveFromRealtimeAsync(snapshot.ServerSteamId, snapshot.MatchId, heroNames, cancellationToken));
         }
 
         return await FirstRichRosterAsync(sources, cancellationToken);
@@ -118,6 +122,7 @@ public static class AppServices
 
     private static async Task<MatchRosterResolution?> ResolveFromRealtimeAsync(
         string serverSteamId,
+        string matchId,
         IReadOnlyDictionary<int, string> heroNames,
         CancellationToken cancellationToken)
     {
@@ -125,7 +130,8 @@ public static class AppServices
             serverSteamId,
             Settings.SteamApiKey,
             heroNames,
-            cancellationToken);
+            cancellationToken,
+            expectedMatchId: matchId);
         return ToResolution(players, serverSteamId, "steam-realtime");
     }
 
@@ -147,7 +153,18 @@ public static class AppServices
         while (remaining.Count > 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var done = await Task.WhenAny(remaining);
+            Task<MatchRosterResolution?> done;
+            try
+            {
+                var next = Task.WhenAny(remaining);
+                done = best is null
+                    ? await next
+                    : await next.WaitAsync(TimeSpan.FromSeconds(1), cancellationToken);
+            }
+            catch (TimeoutException)
+            {
+                return best;
+            }
             remaining.Remove(done);
 
             MatchRosterResolution? result;
@@ -164,17 +181,22 @@ public static class AppServices
                 continue;
             }
 
-            if (result is null || result.IdentifiedCount == 0)
+            if (result is null || (result.IdentifiedCount == 0 && string.IsNullOrWhiteSpace(result.ServerSteamId)))
             {
                 continue;
             }
 
-            if (best is null || result.IdentifiedCount > best.IdentifiedCount)
+            if (best is null || result.IdentifiedCount > best.IdentifiedCount
+                || (result.IdentifiedCount == best.IdentifiedCount
+                    && MatchRosterMerger.CountTeamed(result.Players ?? []) > MatchRosterMerger.CountTeamed(best.Players ?? []))
+                || (result.IdentifiedCount == best.IdentifiedCount
+                    && MatchRosterMerger.CountTeamed(result.Players ?? []) == MatchRosterMerger.CountTeamed(best.Players ?? [])
+                    && MatchRosterMerger.CountHeroes(result.Players ?? []) > MatchRosterMerger.CountHeroes(best.Players ?? [])))
             {
                 best = result;
             }
 
-            if (best.IdentifiedCount >= 10)
+            if (!MatchRosterMerger.NeedsRefresh(best.Players ?? []))
             {
                 return best;
             }

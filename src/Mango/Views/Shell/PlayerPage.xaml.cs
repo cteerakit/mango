@@ -9,10 +9,14 @@ namespace Mango.Views.Shell;
 public sealed partial class PlayerPage : Page
 {
     private CancellationTokenSource? _loadCts;
+    private bool _isSelf;
     private bool _suppressPickerChange;
     private string? _selectedSteamId;
     private string? _loadedSteamId;
     private string? _loadingSteamId;
+    private string _remoteRankLabel = "—";
+    private bool _isProfilePrivate;
+    private int? _reportedRankTier;
     private IReadOnlyList<PlayerPickerItem> _pickerItems = Array.Empty<PlayerPickerItem>();
 
     public PlayerPage()
@@ -25,6 +29,29 @@ public sealed partial class PlayerPage : Page
     {
         base.OnNavigatedTo(e);
         AppServices.MatchStore.SnapshotUpdated += OnSnapshotUpdated;
+
+        _isSelf = e.Parameter is PlayerPageNavigationArgs { IsSelf: true };
+        if (_isSelf)
+        {
+            PageTitleText.Text = "You";
+            PickerCard.Visibility = Visibility.Collapsed;
+            foreach (var element in new FrameworkElement[] { NoteLabel, NoteText, LikesLabel, LikesText, DislikesLabel, DislikesText })
+            {
+                element.Visibility = Visibility.Collapsed;
+            }
+
+            var selfId = ResolveLocalSteamId();
+            if (SteamIdConverter.ToAccountId(selfId) is null)
+            {
+                ClearProfile("Launch Dota 2 and enter a match once to detect your account. Your stats will appear here automatically.");
+            }
+            else
+            {
+                SelectPlayer(selfId);
+            }
+
+            return;
+        }
 
         // Explicit navigation (e.g. Match name click) can open another player;
         // otherwise always default to the local user.
@@ -54,6 +81,23 @@ public sealed partial class PlayerPage : Page
     private void OnSnapshotUpdated(MatchSnapshot snapshot)
     {
         var localId = ResolveLocalSteamId();
+        if (_isSelf)
+        {
+            if (SteamIdConverter.ToAccountId(localId) is not null)
+            {
+                if (_selectedSteamId != localId)
+                {
+                    SelectPlayer(localId);
+                }
+                else
+                {
+                    RefreshLocalIdentity(localId);
+                }
+            }
+
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(_selectedSteamId) && !string.IsNullOrWhiteSpace(localId))
         {
             ApplyPlayerPicker(localId);
@@ -170,7 +214,8 @@ public sealed partial class PlayerPage : Page
         var fromGsi = AppServices.MatchStore.Snapshot.SteamId?.Trim() ?? string.Empty;
         if (!string.IsNullOrWhiteSpace(fromGsi))
         {
-            if (!string.Equals(AppServices.Settings.SteamId, fromGsi, StringComparison.OrdinalIgnoreCase))
+            if (!AppServices.MatchStore.IsUsingMockData
+                && !string.Equals(AppServices.Settings.SteamId, fromGsi, StringComparison.OrdinalIgnoreCase))
             {
                 AppServices.Settings.SteamId = fromGsi;
                 AppServices.Settings.Save();
@@ -190,13 +235,19 @@ public sealed partial class PlayerPage : Page
         var token = loadCts.Token;
         _selectedSteamId = steamId;
         _loadingSteamId = steamId;
+        _remoteRankLabel = "—";
+        _isProfilePrivate = false;
+        _reportedRankTier = null;
+        RefreshRank();
 
         SetLoading(true);
         RefreshLocalIdentity(steamId);
 
         try
         {
-            var overview = await AppServices.OpenDota.GetPlayerOverviewAsync(steamId, token);
+            var overview = AppServices.MatchStore.IsUsingMockData
+                ? MockMatchData.CreatePlayerOverview(steamId)
+                : await AppServices.OpenDota.GetPlayerOverviewAsync(steamId, token);
             if (!ReferenceEquals(loadCts, _loadCts) || token.IsCancellationRequested)
             {
                 return;
@@ -214,7 +265,9 @@ public sealed partial class PlayerPage : Page
 
             _loadedSteamId = steamId;
             BindOverview(overview);
-            SubtitleText.Text = $"Overall stats and recent matches for {overview.DisplayName}.";
+            SubtitleText.Text = _isSelf
+                ? "Your stats and recent matches, including Turbo."
+                : $"Overall stats and recent matches for {overview.DisplayName}.";
         }
         catch (OperationCanceledException)
         {
@@ -247,7 +300,10 @@ public sealed partial class PlayerPage : Page
             .FirstOrDefault(player => string.Equals(player.SteamId, steamId, StringComparison.OrdinalIgnoreCase));
 
         var name = FirstNonEmpty(note?.PlayerName, snapshotPlayer?.Name);
-        NameText.Text = DisplayOrDash(name);
+        if (!string.IsNullOrWhiteSpace(name) || _loadedSteamId != steamId)
+        {
+            NameText.Text = DisplayOrDash(name);
+        }
         SteamIdText.Text = DisplayOrDash(steamId);
         NoteText.Text = DisplayOrDash(note?.Content ?? string.Empty);
         LikesText.Text = (note?.LikeCount ?? 0).ToString();
@@ -263,10 +319,14 @@ public sealed partial class PlayerPage : Page
             NameText.Text = overview.DisplayName;
         }
 
-        RankText.Text = overview.RankLabel;
+        _remoteRankLabel = overview.RankLabel;
+        _isProfilePrivate = overview.IsPrivate;
+        _reportedRankTier = overview.RankTier;
+        RefreshRank();
         WinsText.Text = overview.Wins.ToString();
         LossesText.Text = overview.Losses.ToString();
         WinRateText.Text = overview.WinRatePercent is { } rate ? $"{rate:0.#}%" : "—";
+        TotalMatchesText.Text = (overview.Wins + overview.Losses).ToString("N0");
 
         var matches = overview.RecentMatches.ToList();
         MatchesList.ItemsSource = matches;
@@ -281,10 +341,14 @@ public sealed partial class PlayerPage : Page
 
     private void BindRemoteUnavailable(string message)
     {
-        RankText.Text = "—";
+        _remoteRankLabel = "—";
+        _isProfilePrivate = false;
+        _reportedRankTier = null;
+        RefreshRank();
         WinsText.Text = "—";
         LossesText.Text = "—";
         WinRateText.Text = "—";
+        TotalMatchesText.Text = "—";
         MatchesList.ItemsSource = null;
         MatchesEmptyText.Text = message;
         MatchesEmptyText.Visibility = Visibility.Visible;
@@ -311,6 +375,14 @@ public sealed partial class PlayerPage : Page
             ? Visibility.Visible
             : Visibility.Collapsed;
         SetLoading(false);
+    }
+
+    private void RefreshRank()
+    {
+        var savedRank = PlayerRanks.Get(AppServices.Settings.PlayerRanks, _selectedSteamId, _isProfilePrivate, _reportedRankTier);
+        RankText.Text = savedRank is null
+            ? _remoteRankLabel
+            : $"Manual: {OpenDotaService.FormatRankTier(savedRank.RankTier)}";
     }
 
     private void SetLoading(bool isLoading)
@@ -410,6 +482,14 @@ public sealed partial class PlayerPage : Page
         foreach (var player in snapshot.Players)
         {
             Upsert(player.SteamId ?? string.Empty, player.Name);
+        }
+
+        foreach (var (accountId, rank) in AppServices.Settings.PlayerRanks)
+        {
+            if (!players.Keys.Any(id => SteamIdConverter.ToAccountId(id)?.ToString() == accountId))
+            {
+                Upsert(accountId, rank.PlayerName);
+            }
         }
 
         return players.Values

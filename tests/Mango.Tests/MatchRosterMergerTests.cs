@@ -5,6 +5,54 @@ namespace Mango.Tests;
 
 public class MatchRosterMergerTests
 {
+    [Theory]
+    [InlineData(1, 1, true)]
+    [InlineData(10, 0, true)]
+    [InlineData(10, 1, true)]
+    [InlineData(10, 9, true)]
+    [InlineData(10, 10, false)]
+    public void NeedsRefresh_UntilIdentitiesAndHeroesAreComplete(int count, int heroes, bool expected)
+    {
+        var players = Enumerable.Range(0, count)
+            .Select(id => new MatchPlayer
+            {
+                SteamId = (id + 1).ToString(),
+                HeroName = id < heroes ? "npc_dota_hero_axe" : string.Empty,
+                TeamName = id < 5 ? "radiant" : "dire",
+            }).ToList();
+
+        Assert.Equal(expected, MatchRosterMerger.NeedsRefresh(players));
+    }
+
+    [Fact]
+    public void NeedsRefresh_TrueWhenFullRosterHasNoTeams()
+    {
+        var players = Enumerable.Range(1, 10)
+            .Select(id => new MatchPlayer { SteamId = id.ToString(), HeroName = "npc_dota_hero_axe" })
+            .ToList();
+
+        Assert.True(MatchRosterMerger.NeedsRefresh(players));
+    }
+
+    [Fact]
+    public void Merge_FillsHeroesWhenTenPlayersWereAlreadyIdentified()
+    {
+        var current = Enumerable.Range(1, 10)
+            .Select(id => new MatchPlayer { SteamId = id.ToString(), Name = $"Player {id}" })
+            .ToList();
+        current[0].HeroName = "npc_dota_hero_pudge";
+        var refreshed = Enumerable.Range(1, 10)
+            .Select(id => new MatchPlayer { SteamId = id.ToString(), HeroName = "npc_dota_hero_axe" })
+            .ToList();
+
+        var merged = MatchRosterMerger.Merge(current, refreshed);
+
+        Assert.Equal(10, merged.Count);
+        Assert.Equal("npc_dota_hero_pudge", merged.Single(player => player.SteamId == "1").HeroName);
+        Assert.All(merged.Where(player => player.SteamId != "1"), player => Assert.Equal("axe", player.HeroIconKey));
+        Assert.Equal("Player 2", merged.Single(player => player.SteamId == "2").Name);
+    }
+
     [Fact]
     public void Merge_PrefersExternalWhenGsiRosterIsSparse()
     {

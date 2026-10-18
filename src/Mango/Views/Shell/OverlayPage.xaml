@@ -35,6 +35,17 @@
                     BorderThickness="1"
                     CornerRadius="12">
                     <StackPanel Spacing="16">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Button
+                                x:Name="ShowOverlayButton"
+                                Content="Show overlay"
+                                Click="OnShowOverlayClick" />
+                            <Button
+                                x:Name="HideOverlayButton"
+                                Content="Hide overlay"
+                                Click="OnHideOverlayClick" />
+                        </StackPanel>
+
                         <TextBlock Text="Overlay widgets" Style="{StaticResource SubtitleTextBlockStyle}" />
 
                         <StackPanel Spacing="4">

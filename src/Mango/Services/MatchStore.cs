@@ -2,6 +2,7 @@ using Mango.Models;
 using Mango.Models.Gsi;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Dispatching;
+using System.Text.Json;
 
 namespace Mango.Services;
 
@@ -22,6 +23,9 @@ public sealed partial class MatchStore : ObservableObject
     private DispatcherQueue? _dispatcherQueue;
     private Func<MatchSnapshot, CancellationToken, Task<MatchRosterResolution?>>? _rosterResolver;
     private string _lastRosterFetchMessage = string.Empty;
+    private readonly MatchPageState _matchPageState = new();
+    private GsiPayload? _latestLivePayload;
+    private string _lastRosterOrderKey = string.Empty;
 
     [ObservableProperty]
     private MatchSnapshot _snapshot = new();
@@ -30,7 +34,7 @@ public sealed partial class MatchStore : ObservableObject
     private bool _isGsiConnected;
 
     [ObservableProperty]
-    private bool _isDebugPreview;
+    private bool _isUsingMockData;
 
     [ObservableProperty]
     private string _connectionStatus = "Waiting for Dota 2";
@@ -41,6 +45,9 @@ public sealed partial class MatchStore : ObservableObject
     public bool LastRosterFetchFailed => _lastRosterFetchFailed;
 
     public string LastRosterFetchMessage => _lastRosterFetchMessage;
+    public string LastRosterSource { get; private set; } = string.Empty;
+    public MatchSnapshot MatchPageSnapshot => IsUsingMockData ? Snapshot : _matchPageState.Snapshot;
+    public bool IsShowingPreviousMatch => !IsUsingMockData && _matchPageState.IsPreviousMatch;
 
     public event Action<MatchSnapshot>? SnapshotUpdated;
 
@@ -54,39 +61,66 @@ public sealed partial class MatchStore : ObservableObject
 
     public void ApplyPayload(GsiPayload payload)
     {
-        var snapshot = RetainRicherRoster(GsiNormalizer.Normalize(payload));
-        IsDebugPreview = false;
-        PublishThrottled(snapshot, snapshot.IsInGame || snapshot.IsInDraft ? "Live match" : "Connected (menu/lobby)", connected: true);
-        QueueExternalRosterFetch(snapshot);
-    }
-
-    public void ApplyDebugPreview()
-    {
-        CancelRosterFetch();
-        IsDebugPreview = true;
-        var snapshot = MockMatchData.CreateSnapshot();
-        snapshot.MatchId = "debug-" + Guid.NewGuid().ToString("N");
-        Publish(snapshot, "Debug preview", connected: true);
-    }
-
-    public void ClearDebugPreview()
-    {
-        if (!IsDebugPreview)
+        _latestLivePayload = payload;
+        if (IsUsingMockData)
         {
             return;
         }
 
-        IsDebugPreview = false;
+        var snapshot = RetainRicherRoster(GsiNormalizer.Normalize(payload));
+        var connectionStatus = snapshot.IsInMatch
+            ? payload.Player?.IsSpectating == true || payload.Hero?.IsSpectating == true
+                ? "Live match — Spectator"
+                : "Live match — Playing"
+            : "Connected (menu/lobby)";
+        PublishThrottled(snapshot, connectionStatus, connected: true);
+        QueueExternalRosterFetch(snapshot);
+    }
+
+    public void ApplyMockData()
+    {
+        if (IsUsingMockData)
+        {
+            return;
+        }
+
+        CancelRosterFetch();
+        IsUsingMockData = true;
+        var snapshot = MockMatchData.CreateSnapshot();
+        snapshot.MatchId = "debug-" + Guid.NewGuid().ToString("N");
+        Publish(snapshot, "Mock data", connected: false);
+    }
+
+    public void ClearMockData()
+    {
+        if (!IsUsingMockData)
+        {
+            return;
+        }
+
+        IsUsingMockData = false;
+        var latestPayload = _latestLivePayload;
         MarkDisconnected();
+        if (latestPayload is not null)
+        {
+            ApplyPayload(latestPayload);
+        }
     }
 
     public void MarkDisconnected()
     {
+        if (IsUsingMockData)
+        {
+            return;
+        }
+
+        _latestLivePayload = null;
         CancelRosterFetch();
         IsGsiConnected = false;
-        IsDebugPreview = false;
+        IsUsingMockData = false;
         ConnectionStatus = "Waiting for Dota 2";
         Snapshot = new MatchSnapshot { IsConnected = false };
+        _matchPageState.Update(Snapshot);
         LastPayloadUtc = null;
         _lastPublishUtc = DateTimeOffset.MinValue;
         _lastRosterFetchKey = string.Empty;
@@ -94,17 +128,18 @@ public sealed partial class MatchStore : ObservableObject
         _rosterFetchInFlightKey = null;
         _lastRosterFetchFailed = false;
         _lastRosterFetchMessage = string.Empty;
+        LastRosterSource = string.Empty;
         SnapshotUpdated?.Invoke(Snapshot);
     }
 
     private void QueueExternalRosterFetch(MatchSnapshot snapshot)
     {
-        if (_rosterResolver is null || _dispatcherQueue is null || IsDebugPreview || !snapshot.IsConnected)
+        if (_rosterResolver is null || _dispatcherQueue is null || IsUsingMockData || !snapshot.IsConnected)
         {
             return;
         }
 
-        if (MatchRosterMerger.CountIdentified(snapshot.Players) >= 10)
+        if (!MatchRosterMerger.NeedsRefresh(snapshot.Players))
         {
             return;
         }
@@ -124,7 +159,10 @@ public sealed partial class MatchStore : ObservableObject
             return;
         }
 
-        var retryInterval = _lastRosterFetchFailed
+        // Steam's realtime stats gain teams shortly before the horn; poll faster until they arrive.
+        var awaitingTeams = !string.IsNullOrWhiteSpace(snapshot.ServerSteamId)
+            && MatchRosterMerger.CountTeamed(snapshot.Players) < 10;
+        var retryInterval = _lastRosterFetchFailed || awaitingTeams
             ? FailedRosterFetchInterval
             : MinRosterFetchInterval;
         if (string.Equals(fetchKey, _lastRosterFetchKey, StringComparison.Ordinal)
@@ -150,8 +188,11 @@ public sealed partial class MatchStore : ObservableObject
             {
                 var resolution = await _rosterResolver(matchSnapshot, token);
                 var external = resolution?.Players;
+                LogRosterOrder(matchSnapshot, resolution);
                 if (external is null
-                    || MatchRosterMerger.CountIdentified(external) <= MatchRosterMerger.CountIdentified(gsiPlayers))
+                    || (MatchRosterMerger.CountIdentified(external) <= MatchRosterMerger.CountIdentified(gsiPlayers)
+                        && MatchRosterMerger.CountHeroes(external) <= MatchRosterMerger.CountHeroes(gsiPlayers)
+                        && MatchRosterMerger.CountTeamed(external) <= MatchRosterMerger.CountTeamed(gsiPlayers)))
                 {
                     _lastRosterFetchFailed = true;
                     _lastRosterFetchMessage = string.IsNullOrWhiteSpace(resolution?.ServerSteamId)
@@ -169,7 +210,7 @@ public sealed partial class MatchStore : ObservableObject
 
                 _dispatcherQueue.TryEnqueue(() =>
                 {
-                    if (token.IsCancellationRequested || IsDebugPreview || !Snapshot.IsConnected)
+                    if (token.IsCancellationRequested || IsUsingMockData || !Snapshot.IsConnected)
                     {
                         return;
                     }
@@ -181,23 +222,26 @@ public sealed partial class MatchStore : ObservableObject
                     }
 
                     if (MatchRosterMerger.CountIdentified(merged) <= MatchRosterMerger.CountIdentified(Snapshot.Players)
+                        && MatchRosterMerger.CountHeroes(merged) <= MatchRosterMerger.CountHeroes(Snapshot.Players)
+                        && MatchRosterMerger.CountTeamed(merged) <= MatchRosterMerger.CountTeamed(Snapshot.Players)
                         && string.IsNullOrWhiteSpace(resolution?.ServerSteamId))
                     {
                         return;
                     }
 
-                    var updated = CloneWithPlayers(Snapshot, merged);
+                    var updated = CloneWithPlayers(Snapshot, MatchRosterMerger.Merge(merged, Snapshot.Players));
                     if (!string.IsNullOrWhiteSpace(resolution?.ServerSteamId))
                     {
                         updated.ServerSteamId = resolution.ServerSteamId;
                     }
 
+                    LastRosterSource = resolution?.Source ?? string.Empty;
                     Publish(updated, ConnectionStatus, connected: true);
                 });
             }
             catch (OperationCanceledException)
             {
-                if (fetchGeneration == _rosterFetchGeneration && !IsDebugPreview && Snapshot.IsConnected)
+                if (fetchGeneration == _rosterFetchGeneration && !IsUsingMockData && Snapshot.IsConnected)
                 {
                     _lastRosterFetchFailed = true;
                     _lastRosterFetchMessage = "Lobby lookup timed out — retrying.";
@@ -220,6 +264,45 @@ public sealed partial class MatchStore : ObservableObject
         }, token);
     }
 
+    /// <summary>
+    /// Diagnostics only: records each source's player order so the local Steam list order can be
+    /// compared with the teams Steam's realtime stats report later in the same match.
+    /// </summary>
+    private void LogRosterOrder(MatchSnapshot snapshot, MatchRosterResolution? resolution)
+    {
+        if (resolution?.Players is not { Count: > 0 } players)
+        {
+            return;
+        }
+
+        var key = $"{snapshot.MatchId}|{resolution.Source}|{string.Join(',', players.Select(static player => player.SteamId))}";
+        if (key == _lastRosterOrderKey)
+        {
+            return;
+        }
+
+        _lastRosterOrderKey = key;
+        try
+        {
+            Directory.CreateDirectory(AppSettings.SettingsDirectory);
+            var line = JsonSerializer.Serialize(new
+            {
+                atUtc = DateTimeOffset.UtcNow,
+                matchId = snapshot.MatchId,
+                gameState = snapshot.GameState,
+                localSteamId = snapshot.SteamId,
+                localTeam = snapshot.TeamName,
+                source = resolution.Source,
+                players = players.Select(static player => new { player.SteamId, player.TeamName, player.TeamSlot }),
+            });
+            File.AppendAllText(Path.Combine(AppSettings.SettingsDirectory, "roster-order-log.jsonl"), line + Environment.NewLine);
+        }
+        catch
+        {
+            // Diagnostics only.
+        }
+    }
+
     private void PersistServerSteamId(MatchSnapshot matchSnapshot, string? serverSteamId)
     {
         if (string.IsNullOrWhiteSpace(serverSteamId) || _dispatcherQueue is null)
@@ -229,7 +312,7 @@ public sealed partial class MatchStore : ObservableObject
 
         _dispatcherQueue.TryEnqueue(() =>
         {
-            if (IsDebugPreview || !Snapshot.IsConnected)
+            if (IsUsingMockData || !Snapshot.IsConnected)
             {
                 return;
             }
@@ -307,7 +390,7 @@ public sealed partial class MatchStore : ObservableObject
     {
         _dispatcherQueue?.TryEnqueue(() =>
         {
-            if (IsDebugPreview || !Snapshot.IsConnected)
+            if (IsUsingMockData || !Snapshot.IsConnected)
             {
                 return;
             }
@@ -330,7 +413,7 @@ public sealed partial class MatchStore : ObservableObject
     private MatchSnapshot RetainRicherRoster(MatchSnapshot incoming)
     {
         var current = Snapshot;
-        if (!current.IsConnected || (!incoming.IsInGame && !incoming.IsInDraft))
+        if (!current.IsConnected || !incoming.IsInMatch)
         {
             return incoming;
         }
@@ -341,7 +424,9 @@ public sealed partial class MatchStore : ObservableObject
             incoming.MatchId,
             current.MatchId);
 
-        if (string.IsNullOrWhiteSpace(incoming.ServerSteamId))
+        if (string.IsNullOrWhiteSpace(incoming.ServerSteamId)
+            && PlayerNotesMatch.IsUsableMatchId(incoming.MatchId)
+            && string.Equals(incoming.MatchId, current.MatchId, StringComparison.Ordinal))
         {
             incoming.ServerSteamId = current.ServerSteamId;
         }
@@ -353,6 +438,10 @@ public sealed partial class MatchStore : ObservableObject
     {
         _lastPublishUtc = DateTimeOffset.UtcNow;
         Snapshot = snapshot;
+        if (!IsUsingMockData)
+        {
+            _matchPageState.Update(snapshot);
+        }
         IsGsiConnected = connected;
         ConnectionStatus = connectionStatus;
         LastPayloadUtc = snapshot.ReceivedAtUtc;

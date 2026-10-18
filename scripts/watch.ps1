@@ -1,6 +1,5 @@
 # Rebuilds and relaunches Mango when source files change.
-# Packaged WinUI apps cannot receive in-process Hot Reload from `dotnet watch`
-# (WinApp CLI launches via AUMID). Use Visual Studio F5 for XAML / C# Hot Reload.
+# Enable About > Open developer options > Show mock data to work without Dota.
 param(
     [string]$Project = "$PSScriptRoot\..\src\Mango\Mango.csproj"
 )
@@ -8,4 +7,6 @@ param(
 $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
 $platform = if ($arch -eq 'Arm64') { 'ARM64' } else { 'x64' }
 
-dotnet watch --non-interactive --project $Project -- -p:Platform=$platform
+Write-Host 'Watching C# and XAML. Changes rebuild and restart Mango. Press Ctrl+C to stop.'
+dotnet watch --no-hot-reload --project $Project run --no-launch-profile --property:Platform=$platform
+exit $LASTEXITCODE

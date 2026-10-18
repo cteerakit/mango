@@ -65,6 +65,12 @@ public sealed partial class OverlayPage : Page
         ApplySettings();
     }
 
+    private void OnShowOverlayClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e) =>
+        _viewModel?.ShowOverlayCommand.Execute(null);
+
+    private void OnHideOverlayClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e) =>
+        _viewModel?.HideOverlayCommand.Execute(null);
+
     private void OnResetPositionsClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         if (_viewModel is null)

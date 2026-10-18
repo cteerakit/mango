@@ -70,14 +70,6 @@
                                 x:Name="ReinstallButton"
                                 Content="Reinstall GSI config"
                                 Click="OnReinstallClick" />
-                            <Button
-                                x:Name="ShowOverlayButton"
-                                Content="Show overlay"
-                                Click="OnShowOverlayClick" />
-                            <Button
-                                x:Name="HideOverlayButton"
-                                Content="Hide overlay"
-                                Click="OnHideOverlayClick" />
                         </StackPanel>
                     </StackPanel>
                 </Border>

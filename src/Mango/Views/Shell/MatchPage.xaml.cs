@@ -1,7 +1,9 @@
 using Mango.Models;
 using Mango.Services;
 using Microsoft.UI.Xaml;
+using Microsoft.UI;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 
 namespace Mango.Views.Shell;
@@ -11,34 +13,90 @@ public sealed partial class MatchPage : Page
     private readonly Dictionary<string, PlayerMatchEnrichment> _enrichmentBySteamId =
         new(StringComparer.OrdinalIgnoreCase);
 
+    private static readonly Brush RadiantBrush = new SolidColorBrush(ColorHelper.FromArgb(0xFF, 0x5F, 0xB0, 0x4A));
+    private static readonly Brush DireBrush = new SolidColorBrush(ColorHelper.FromArgb(0xFF, 0xD0, 0x4A, 0x3A));
+    private static readonly Brush LobbyBrush = new SolidColorBrush(ColorHelper.FromArgb(0xFF, 0x8A, 0x8A, 0x8A));
+
+    private readonly HashSet<ScrollViewer> _statsScrollViewers = new();
+    private double _statsHorizontalOffset;
+
     private CancellationTokenSource? _enrichCts;
     private string _enrichmentRosterKey = string.Empty;
     private string _boundRosterKey = string.Empty;
     private int _enrichmentGeneration;
+    private readonly Dictionary<string, PlayerMatchHistory> _history = new();
+    private CancellationTokenSource? _historyCts;
+    private string _historyRosterKey = string.Empty;
 
     public MatchPage()
     {
         InitializeComponent();
-        ShellContentLayout.AttachExpanding(LayoutRoot, ContentColumn);
+        NavigationCacheMode = NavigationCacheMode.Required;
+    }
+
+    private void OnStatsPointerWheelChanged(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (e.KeyModifiers != Windows.System.VirtualKeyModifiers.Shift)
+        {
+            return;
+        }
+
+        var properties = e.GetCurrentPoint((UIElement)sender).Properties;
+        if (properties.IsHorizontalMouseWheel || properties.MouseWheelDelta == 0)
+        {
+            return;
+        }
+
+        StatsScrollBar.ChangeView(
+            Math.Clamp(_statsHorizontalOffset - properties.MouseWheelDelta, 0, StatsScrollBar.ScrollableWidth),
+            null, null, disableAnimation: true);
+        e.Handled = true;
+    }
+
+    private void OnStatsScrollLoaded(object sender, RoutedEventArgs e)
+    {
+        var viewer = (ScrollViewer)sender;
+        _statsScrollViewers.Add(viewer);
+        viewer.ChangeView(_statsHorizontalOffset, null, null, disableAnimation: true);
+    }
+
+    private void OnStatsScrollUnloaded(object sender, RoutedEventArgs e) =>
+        _statsScrollViewers.Remove((ScrollViewer)sender);
+
+    private void OnStatsScrollViewChanged(object sender, ScrollViewerViewChangedEventArgs e)
+    {
+        var source = (ScrollViewer)sender;
+        // Ignore notifications from viewers catching up to the shared offset.
+        if (Math.Abs(source.HorizontalOffset - _statsHorizontalOffset) < 0.5)
+        {
+            return;
+        }
+
+        _statsHorizontalOffset = source.HorizontalOffset;
+        foreach (var viewer in _statsScrollViewers.Append(StatsScrollBar))
+        {
+            if (viewer != source && Math.Abs(viewer.HorizontalOffset - _statsHorizontalOffset) >= 0.5)
+            {
+                viewer.ChangeView(_statsHorizontalOffset, null, null, disableAnimation: true);
+            }
+        }
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
         AppServices.MatchStore.SnapshotUpdated += OnSnapshotUpdated;
-        _boundRosterKey = string.Empty;
-        BindPlayers(AppServices.MatchStore.Snapshot, requestEnrichment: true, force: true);
+        BindPlayers(AppServices.MatchStore.MatchPageSnapshot, requestEnrichment: true, force: false);
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         AppServices.MatchStore.SnapshotUpdated -= OnSnapshotUpdated;
-        CancelEnrichment();
         base.OnNavigatedFrom(e);
     }
 
-    private void OnSnapshotUpdated(MatchSnapshot snapshot) =>
-        BindPlayers(snapshot, requestEnrichment: true, force: false);
+    private void OnSnapshotUpdated(MatchSnapshot _) =>
+        BindPlayers(AppServices.MatchStore.MatchPageSnapshot, requestEnrichment: true, force: false);
 
     private void OnPlayerNameClick(object sender, RoutedEventArgs e)
     {
@@ -54,6 +112,94 @@ public sealed partial class MatchPage : Page
             Name = player.Name,
         });
     }
+
+    private async void OnEditRankClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: MatchPlayer player }
+            || !player.CanEditRank
+            || SteamIdConverter.ToAccountId(player.SteamId) is not { } accountId)
+        {
+            return;
+        }
+
+        var settings = AppServices.Settings;
+        var savedRank = PlayerRanks.Get(settings.PlayerRanks, player.SteamId, player.IsProfilePrivate, player.ReportedRankTier);
+        var options = PlayerRanks.Tiers
+            .Select(tier => new RankOption(tier, OpenDotaService.FormatRankTier(tier))).ToList();
+        var picker = new ComboBox
+        {
+            Header = "Manual rank",
+            PlaceholderText = "Choose a rank",
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            ItemsSource = options,
+            DisplayMemberPath = nameof(RankOption.Label),
+            SelectedItem = options.FirstOrDefault(option => option.Tier == savedRank?.RankTier),
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(picker, "ManualRankPicker");
+        var content = new StackPanel { Spacing = 12 };
+        content.Children.Add(new TextBlock
+        {
+            Text = "Save a manual rank for a private profile or a player with no reported rank, or clear the saved rank.",
+            TextWrapping = TextWrapping.WrapWholeWords,
+        });
+        content.Children.Add(picker);
+        var dialog = new ContentDialog
+        {
+            Title = string.IsNullOrWhiteSpace(player.Name) ? "Player rank" : $"Rank — {player.Name}",
+            Content = content,
+            PrimaryButtonText = "Save rank",
+            SecondaryButtonText = savedRank is null ? string.Empty : "Clear override",
+            CloseButtonText = "Cancel",
+            IsPrimaryButtonEnabled = picker.SelectedItem is RankOption,
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
+        };
+        picker.SelectionChanged += (_, _) => dialog.IsPrimaryButtonEnabled = picker.SelectedItem is RankOption;
+
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.None
+            || !_enrichmentBySteamId.TryGetValue(player.SteamId, out var latestProfile)
+            || !PlayerRanks.CanOverride(latestProfile.IsProfilePrivate, latestProfile.ReportedRankTier))
+        {
+            return;
+        }
+
+        var previous = new Dictionary<string, PlayerRankOverride>(settings.PlayerRanks);
+        var key = accountId.ToString();
+        if (result == ContentDialogResult.Primary && picker.SelectedItem is RankOption selected)
+        {
+            settings.PlayerRanks[key] = new PlayerRankOverride
+            {
+                PlayerId = player.SteamId,
+                PlayerName = player.Name,
+                RankTier = selected.Tier,
+            };
+        }
+        else
+        {
+            settings.PlayerRanks.Remove(key);
+        }
+
+        try
+        {
+            settings.Save();
+            BindPlayers(AppServices.MatchStore.MatchPageSnapshot, requestEnrichment: false, force: true);
+            RankSaveStatus.Severity = InfoBarSeverity.Success;
+            RankSaveStatus.Message = result == ContentDialogResult.Primary
+                ? "Rank saved for this player." : "Rank override cleared.";
+        }
+        catch (Exception)
+        {
+            settings.PlayerRanks = previous;
+            RankSaveStatus.Severity = InfoBarSeverity.Error;
+            RankSaveStatus.Message = "Could not save the rank. Please try again.";
+        }
+
+        RankSaveStatus.IsOpen = true;
+    }
+
+    private sealed record RankOption(int Tier, string Label);
 
     private async void OnAddNoteClick(object sender, RoutedEventArgs e)
     {
@@ -78,6 +224,7 @@ public sealed partial class MatchPage : Page
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
         };
         if (!string.IsNullOrWhiteSpace(player.Note))
         {
@@ -92,12 +239,12 @@ public sealed partial class MatchPage : Page
 
         var note = result == ContentDialogResult.Primary ? input.Text.Trim() : string.Empty;
         SavePlayerNote(player, note);
-        BindPlayers(AppServices.MatchStore.Snapshot, requestEnrichment: false, force: true);
+        BindPlayers(AppServices.MatchStore.MatchPageSnapshot, requestEnrichment: false, force: true);
     }
 
     private void OnLikeClick(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { DataContext: MatchPlayer player })
+        if (sender is FrameworkElement { DataContext: MatchPlayer player })
         {
             CastVote(player, PlayerNoteVote.Like);
         }
@@ -105,9 +252,19 @@ public sealed partial class MatchPage : Page
 
     private void OnDislikeClick(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { DataContext: MatchPlayer player })
+        if (sender is FrameworkElement { DataContext: MatchPlayer player })
         {
             CastVote(player, PlayerNoteVote.Dislike);
+        }
+    }
+
+    private void OnToxicClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: MatchPlayer player }
+            && PlayerNotesTransfer.TryToggleToxic(AppServices.Settings.PlayerNotes, player.Name, player.SteamId))
+        {
+            AppServices.Settings.Save();
+            BindPlayers(AppServices.MatchStore.MatchPageSnapshot, requestEnrichment: false, force: true);
         }
     }
 
@@ -118,14 +275,14 @@ public sealed partial class MatchPage : Page
                 settings.PlayerNotes,
                 player.Name,
                 player.SteamId,
-                AppServices.MatchStore.Snapshot.MatchId,
+                AppServices.MatchStore.MatchPageSnapshot.MatchId,
                 vote))
         {
             return;
         }
 
         settings.Save();
-        BindPlayers(AppServices.MatchStore.Snapshot, requestEnrichment: false, force: true);
+        BindPlayers(AppServices.MatchStore.MatchPageSnapshot, requestEnrichment: false, force: true);
     }
 
     private void BindPlayers(MatchSnapshot snapshot, bool requestEnrichment, bool force)
@@ -139,6 +296,7 @@ public sealed partial class MatchPage : Page
         _boundRosterKey = rosterKey;
 
         var notes = AppServices.Settings.PlayerNotes;
+        var localAccount = SteamIdConverter.ToAccountId(LocalSteamId(snapshot));
         var players = snapshot.Players
             .Select(player =>
             {
@@ -146,6 +304,7 @@ public sealed partial class MatchPage : Page
                 player.Note = note?.Content ?? string.Empty;
                 player.LikeCount = note?.LikeCount ?? 0;
                 player.DislikeCount = note?.DislikeCount ?? 0;
+                player.IsToxic = note?.IsToxic ?? false;
                 var (canVote, reason) = VoteAvailability(player, snapshot.MatchId);
                 player.CanVote = canVote;
                 player.VoteUnavailableReason = reason;
@@ -159,9 +318,10 @@ public sealed partial class MatchPage : Page
                     player.RankIconUrl = enrichment.RankIconUrl;
                     player.RankStarUrl = enrichment.RankStarUrl;
                     player.RankLabel = enrichment.RankLabel;
-                    player.WinRateLabel = enrichment.WinRateLabel;
+                    player.RankIsEstimated = enrichment.RankIsEstimated;
                     player.MatchesLabel = enrichment.MatchesLabel;
                     player.IsProfilePrivate = enrichment.IsProfilePrivate;
+                    player.ReportedRankTier = enrichment.ReportedRankTier;
                 }
                 else
                 {
@@ -169,20 +329,37 @@ public sealed partial class MatchPage : Page
                     player.RankIconUrl = string.Empty;
                     player.RankStarUrl = string.Empty;
                     player.RankLabel = string.Empty;
-                    player.WinRateLabel = string.Empty;
+                    player.RankIsEstimated = false;
                     player.MatchesLabel = string.Empty;
                     player.IsProfilePrivate = false;
+                    player.ReportedRankTier = null;
                 }
 
+                if (PlayerRanks.Get(AppServices.Settings.PlayerRanks, player.SteamId, player.IsProfilePrivate, player.ReportedRankTier) is { } savedRank)
+                {
+                    player.RankIconUrl = AssetUrls.RankIcon(savedRank.RankTier);
+                    player.RankStarUrl = AssetUrls.RankStar(savedRank.RankTier);
+                    player.RankLabel = $"Manual: {OpenDotaService.FormatRankTier(savedRank.RankTier)}";
+                    player.RankIsEstimated = false;
+                }
+
+                player.IsLocalPlayer = localAccount is not null
+                    && localAccount == SteamIdConverter.ToAccountId(player.SteamId);
                 player.HeroImageUrl = AssetUrls.HeroIcon(player.HeroIconKey);
+                player.History = _history.GetValueOrDefault(HistoryKey(snapshot, player)) ?? new();
+                if (AppServices.MatchStore.IsUsingMockData)
+                {
+                    MockMatchData.ApplyPreviewDetails(player);
+                }
+
                 return player;
             })
             .ToList();
 
-        RadiantPlayersList.ItemsSource = players
+        var radiantPlayers = players
             .Where(player => player.TeamName.Contains("radiant", StringComparison.OrdinalIgnoreCase))
             .ToList();
-        DirePlayersList.ItemsSource = players
+        var direPlayers = players
             .Where(player => player.TeamName.Contains("dire", StringComparison.OrdinalIgnoreCase))
             .ToList();
         var lobbyPlayers = players
@@ -190,14 +367,72 @@ public sealed partial class MatchPage : Page
                 !player.TeamName.Contains("radiant", StringComparison.OrdinalIgnoreCase)
                 && !player.TeamName.Contains("dire", StringComparison.OrdinalIgnoreCase))
             .ToList();
+        RadiantPlayersList.ItemsSource = radiantPlayers;
+        DirePlayersList.ItemsSource = direPlayers;
+        RadiantPlayersCard.Visibility = radiantPlayers.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        DirePlayersCard.Visibility = direPlayers.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         LobbyPlayersList.ItemsSource = lobbyPlayers;
         LobbyPlayersCard.Visibility = lobbyPlayers.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        RadiantHeader.Content = new TeamHeader
+        {
+            Title = "The Radiant",
+            AccentBrush = RadiantBrush,
+        };
+        DireHeader.Content = new TeamHeader
+        {
+            Title = "The Dire",
+            AccentBrush = DireBrush,
+        };
+        LobbyHeader.Content = new TeamHeader { Title = "Lobby", AccentBrush = LobbyBrush };
         SubtitleText.Text = DescribeRoster(snapshot, players.Count);
 
-        if (requestEnrichment)
+        if (requestEnrichment && !AppServices.MatchStore.IsUsingMockData)
         {
             QueueEnrichment(players);
+            QueueHistory(snapshot, players);
         }
+    }
+
+    private static string LocalSteamId(MatchSnapshot snapshot) =>
+        SteamIdConverter.ToAccountId(snapshot.SteamId) is not null
+            ? snapshot.SteamId : AppServices.Settings.SteamId ?? string.Empty;
+
+    private static string HistoryKey(MatchSnapshot snapshot, MatchPlayer player) =>
+        $"{LocalSteamId(snapshot)}|{snapshot.MatchId}|{player.SteamId}|{player.HeroIconKey}";
+
+    private void QueueHistory(MatchSnapshot snapshot, IReadOnlyList<MatchPlayer> players)
+    {
+        var requests = players.Select(player => (
+            Key: HistoryKey(snapshot, player), SteamId: player.SteamId, Hero: player.HeroIconKey)).ToList();
+        var rosterKey = string.Join('\u001e', requests.Select(request => request.Key));
+        if (_historyRosterKey == rosterKey) return;
+        _historyRosterKey = rosterKey;
+        _historyCts?.Cancel();
+        _historyCts?.Dispose();
+        _historyCts = new CancellationTokenSource();
+        _ = LoadHistoryAsync(requests, LocalSteamId(snapshot), snapshot.MatchId, _historyCts.Token);
+    }
+
+    private async Task LoadHistoryAsync(
+        IReadOnlyList<(string Key, string SteamId, string Hero)> requests,
+        string localSteamId, string matchId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var stratzToken = AppServices.Settings.StratzApiToken;
+            var results = await new MatchHistoryLoader(AppServices.OpenDota).LoadAsync(
+                requests.Where(request => !_history.ContainsKey(request.Key)).ToList(),
+                localSteamId, matchId, cancellationToken,
+                string.IsNullOrWhiteSpace(stratzToken) ? null
+                    : (id, token) => AppServices.Stratz.GetMatchPositionsAsync(id, stratzToken, token),
+                string.IsNullOrWhiteSpace(stratzToken) ? null
+                    : (id, account, token) => AppServices.Stratz.GetPlayerPurchasesAsync(id, account, stratzToken, token));
+            cancellationToken.ThrowIfCancellationRequested();
+            foreach (var (key, history) in results)
+                _history[key] = history;
+            BindPlayers(AppServices.MatchStore.MatchPageSnapshot, requestEnrichment: false, force: true);
+        }
+        catch (OperationCanceledException) { }
     }
 
     private static string BuildRosterKey(MatchSnapshot snapshot)
@@ -207,8 +442,13 @@ public sealed partial class MatchPage : Page
             .ThenBy(static player => player.TeamSlot)
             .ThenBy(static player => player.SteamId, StringComparer.OrdinalIgnoreCase)
             .Select(static player =>
-                $"{player.SteamId}\u001f{player.Name}\u001f{player.TeamName}\u001f{player.HeroIconKey}");
-        return $"{snapshot.MatchId}\u001e{string.Join('\u001e', players)}";
+            {
+                PlayerNotesTransfer.TryGetByPlayerId(AppServices.Settings.PlayerNotes, player.SteamId, out var note);
+                var rank = PlayerRanks.Get(AppServices.Settings.PlayerRanks, player.SteamId, isProfilePrivate: true);
+                return $"{player.SteamId}\u001f{player.Name}\u001f{player.TeamName}\u001f{player.TeamSlot}\u001f{player.HeroIconKey}"
+                    + $"\u001f{note?.Content}\u001f{note?.LikeCount}\u001f{note?.DislikeCount}\u001f{note?.IsToxic}\u001f{note?.LastVoteMatchId}\u001f{note?.LastVote}\u001f{rank?.RankTier}";
+            });
+        return $"{LocalSteamId(snapshot)}\u001e{snapshot.MatchId}\u001e{AppServices.MatchStore.IsShowingPreviousMatch}\u001e{string.Join('\u001e', players)}";
     }
 
     private void QueueEnrichment(IReadOnlyList<MatchPlayer> players)
@@ -248,6 +488,10 @@ public sealed partial class MatchPage : Page
     {
         try
         {
+            var avatarsTask = AppServices.SteamApi.GetPlayerSummariesAsync(
+                steamIds,
+                AppServices.Settings.SteamApiKey,
+                cancellationToken);
             var overviewTasks = steamIds.Select(async steamId =>
             {
                 try
@@ -265,13 +509,13 @@ public sealed partial class MatchPage : Page
                 }
             });
 
-            var overviews = await Task.WhenAll(overviewTasks);
+            var overviewsTask = Task.WhenAll(overviewTasks);
+            await Task.WhenAll(overviewsTask, avatarsTask);
+            var overviews = await overviewsTask;
             cancellationToken.ThrowIfCancellationRequested();
 
-            var avatars = await AppServices.SteamApi.GetPlayerSummariesAsync(
-                steamIds,
-                AppServices.Settings.SteamApiKey,
-                cancellationToken);
+            var avatars = await avatarsTask;
+            cancellationToken.ThrowIfCancellationRequested();
 
             var lobbyAverageTiers = RankEstimator.AverageRankTier(
                 overviews
@@ -285,8 +529,10 @@ public sealed partial class MatchPage : Page
                 var resolved = RankEstimator.Resolve(
                     overview?.RankTier,
                     overview?.LeaderboardRank,
+                    overview?.HistoryRankEstimate,
                     overview?.MmrEstimate,
-                    lobbyAverageTiers);
+                    lobbyAverageTiers,
+                    isProfilePrivate: overview?.IsPrivate == true);
 
                 _enrichmentBySteamId[steamId] = new PlayerMatchEnrichment
                 {
@@ -298,13 +544,16 @@ public sealed partial class MatchPage : Page
                         ? AssetUrls.RankStar(resolved.RankTier)
                         : string.Empty,
                     RankLabel = resolved.Label,
-                    WinRateLabel = overview?.WinRatePercent is { } winRate
-                        ? $"{winRate:0.#}% WR ({overview.Wins}-{overview.Losses})"
-                        : string.Empty,
-                    MatchesLabel = overview is null
+                    RankIsEstimated = resolved.IsEstimated,
+                    MatchesLabel = overview?.IsPrivate == true
+                        ? "\u2014"
+                        : overview is null
                         ? string.Empty
-                        : (overview.Wins + overview.Losses).ToString("N0"),
-                    IsProfilePrivate = summary?.IsPrivate == true || overview?.IsPrivate == true,
+                        : overview.WinRatePercent is { } winRate
+                            ? $"{overview.Wins + overview.Losses:N0} ({winRate:0.#}%)"
+                            : (overview.Wins + overview.Losses).ToString("N0"),
+                    IsProfilePrivate = overview?.IsPrivate == true,
+                    ReportedRankTier = overview?.RankTier,
                 };
             }
 
@@ -314,11 +563,11 @@ public sealed partial class MatchPage : Page
             }
 
             DispatcherQueue.TryEnqueue(() =>
-                BindPlayers(AppServices.MatchStore.Snapshot, requestEnrichment: false, force: true));
+                BindPlayers(AppServices.MatchStore.MatchPageSnapshot, requestEnrichment: false, force: true));
         }
         catch (OperationCanceledException)
         {
-            // Navigation away or newer enrichment.
+            // A newer roster superseded this enrichment.
         }
     }
 
@@ -348,9 +597,14 @@ public sealed partial class MatchPage : Page
 
     private static string DescribeRoster(MatchSnapshot snapshot, int playerCount)
     {
-        if (AppServices.MatchStore.IsDebugPreview)
+        if (AppServices.MatchStore.IsUsingMockData)
         {
-            return "Debug preview roster.";
+            return "Sample roster � mock data is enabled.";
+        }
+
+        if (AppServices.MatchStore.IsShowingPreviousMatch)
+        {
+            return "Last match — stays here until the next match starts.";
         }
 
         if (!snapshot.IsConnected)
@@ -384,7 +638,9 @@ public sealed partial class MatchPage : Page
                     : "Only your local player is in this GSI payload. Loading the full lobby from Steam…";
         }
 
-        return "Players and heroes update when the roster changes. Notes and OpenDota/Steam enrichment load in the background.";
+        return snapshot.Players.Any(player => string.IsNullOrWhiteSpace(player.TeamName))
+            ? $"Showing {playerCount} players. Team and hero details are not available for every player yet."
+            : "KDA, position and items are from each player's latest completed match on their hero. History loads in the background.";
     }
 
     private static (bool CanVote, string Reason) VoteAvailability(MatchPlayer player, string matchId)
@@ -408,8 +664,9 @@ public sealed partial class MatchPage : Page
         public string RankIconUrl { get; init; } = string.Empty;
         public string RankStarUrl { get; init; } = string.Empty;
         public string RankLabel { get; init; } = string.Empty;
-        public string WinRateLabel { get; init; } = string.Empty;
+        public bool RankIsEstimated { get; init; }
         public string MatchesLabel { get; init; } = string.Empty;
         public bool IsProfilePrivate { get; init; }
+        public int? ReportedRankTier { get; init; }
     }
 }

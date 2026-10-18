@@ -11,16 +11,14 @@ public sealed class SteamWebApiService
         PropertyNameCaseInsensitive = true,
     };
 
-    private readonly HttpClient _httpClient = new()
-    {
-        Timeout = TimeSpan.FromSeconds(20),
-    };
+    private readonly HttpClient _httpClient;
 
     private readonly Dictionary<string, CachedAvatar> _avatarCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly TimeSpan AvatarCacheDuration = TimeSpan.FromHours(12);
 
-    public SteamWebApiService()
+    public SteamWebApiService(HttpClient? httpClient = null)
     {
+        _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Mango/1.0");
     }
 
@@ -119,7 +117,8 @@ public sealed class SteamWebApiService
         string? serverSteamId,
         string apiKey,
         IReadOnlyDictionary<int, string>? heroNames = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? expectedMatchId = null)
     {
         if (string.IsNullOrWhiteSpace(serverSteamId) || string.IsNullOrWhiteSpace(apiKey))
         {
@@ -143,7 +142,15 @@ public sealed class SteamWebApiService
             JsonOptions,
             cancellationToken);
 
-        var teams = payload?.Result?.Teams;
+        var returnedMatchId = payload?.Match?.MatchId ?? payload?.Result?.Match?.MatchId;
+        if (PlayerNotesMatch.IsUsableMatchId(expectedMatchId)
+            && PlayerNotesMatch.IsUsableMatchId(returnedMatchId)
+            && !string.Equals(expectedMatchId, returnedMatchId, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var teams = payload?.Teams ?? payload?.Result?.Teams;
         if (teams is not { Count: > 0 })
         {
             return null;
@@ -305,14 +312,28 @@ public sealed class SteamWebApiService
 
     private sealed class SteamRealtimeStatsResponse
     {
+        [JsonPropertyName("match")]
+        public SteamRealtimeMatch? Match { get; set; }
+        [JsonPropertyName("teams")]
+        public List<SteamRealtimeTeam>? Teams { get; set; }
+
         [JsonPropertyName("result")]
         public SteamRealtimeStatsResult? Result { get; set; }
     }
 
     private sealed class SteamRealtimeStatsResult
     {
+        [JsonPropertyName("match")]
+        public SteamRealtimeMatch? Match { get; set; }
         [JsonPropertyName("teams")]
         public List<SteamRealtimeTeam>? Teams { get; set; }
+    }
+
+    private sealed class SteamRealtimeMatch
+    {
+        [JsonPropertyName("match_id")]
+        [JsonConverter(typeof(Mango.Models.Gsi.GsiFlexibleStringJsonConverter))]
+        public string? MatchId { get; set; }
     }
 
     private sealed class SteamRealtimeTeam

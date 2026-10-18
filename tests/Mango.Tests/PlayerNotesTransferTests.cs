@@ -223,6 +223,41 @@ public class PlayerNotesTransferTests
     }
 
     [Fact]
+    public void ToxicMark_RoundTripsWithoutNoteAndTogglesOff()
+    {
+        var notes = new Dictionary<string, PlayerNote>();
+        const string id = "76561198000000000";
+        Assert.True(PlayerNotesTransfer.TryToggleToxic(notes, "Invoker", id));
+        Assert.True(notes[id].IsToxic);
+
+        PlayerNotesTransfer.Upsert(notes, "Invoker", id, string.Empty);
+        Assert.True(PlayerNotesTransfer.TryParse(PlayerNotesTransfer.Serialize(notes), out var parsed, out var error));
+        Assert.Equal(string.Empty, error);
+        Assert.True(parsed[id].IsToxic);
+
+        Assert.True(PlayerNotesTransfer.TryToggleToxic(parsed, "Invoker", id));
+        Assert.False(parsed.ContainsKey(id));
+    }
+
+    [Fact]
+    public void ToxicMark_IsIndependentOfVotesAndPreservedWhenEditingNote()
+    {
+        var notes = new Dictionary<string, PlayerNote>();
+        const string id = "76561198000000000";
+        PlayerNotesTransfer.TryToggleToxic(notes, "Invoker", id);
+        PlayerNotesTransfer.TryVote(notes, "Invoker", id, "match-1", PlayerNoteVote.Dislike);
+        PlayerNotesTransfer.Upsert(notes, "Invoker", id, "Always mid");
+        Assert.True(notes[id].IsToxic);
+        Assert.Equal("dislike", notes[id].LastVote);
+
+        PlayerNotesTransfer.TryToggleToxic(notes, "Invoker", id);
+        Assert.False(notes[id].IsToxic);
+        Assert.Equal("dislike", notes[id].LastVote);
+        Assert.Equal("Always mid", notes[id].Content);
+        Assert.False(PlayerNotesTransfer.TryToggleToxic(notes, "Unknown", string.Empty));
+    }
+
+    [Fact]
     public void Upsert_PreservesLikeCountsWhenEditingContent()
     {
         var notes = new Dictionary<string, PlayerNote>(StringComparer.OrdinalIgnoreCase);

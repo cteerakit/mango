@@ -11,163 +11,438 @@
 
     <Page.Resources>
         <converters:UriToImageSourceConverter x:Key="UriToImageSourceConverter" />
+        <converters:PositionToIconConverter x:Key="PositionToIconConverter" />
         <converters:NullOrEmptyToVisibilityConverter x:Key="NonEmptyToVisible" />
+        <converters:NullOrEmptyToVisibilityConverter x:Key="EmptyToVisible" Invert="True" />
         <converters:BoolToVisibilityConverter x:Key="BoolToVisible" />
+        <converters:BoolToVisibilityConverter x:Key="BoolToCollapsed" Invert="True" />
+        <converters:StringEqualsToVisibilityConverter x:Key="StringEqualsToVisible" />
 
         <GridLength x:Key="ScoreboardColPlayer">280</GridLength>
-        <GridLength x:Key="ScoreboardColHero">56</GridLength>
-        <GridLength x:Key="ScoreboardColRank">40</GridLength>
-        <GridLength x:Key="ScoreboardColMatches">72</GridLength>
+        <GridLength x:Key="ScoreboardColMatches">120</GridLength>
         <GridLength x:Key="ScoreboardColActions">188</GridLength>
+        <GridLength x:Key="ScoreboardColLastMatch">640</GridLength>
+        <GridLength x:Key="ScoreboardColRecentMatches">264</GridLength>
+
+        <DataTemplate x:Key="PurchaseItemTemplate">
+            <StackPanel Width="36" Spacing="3"
+                        ToolTipService.ToolTip="{Binding ToolTip}"
+                        AutomationProperties.Name="{Binding ToolTip}">
+                <Border Height="26" CornerRadius="4" Background="{ThemeResource ControlFillColorDefaultBrush}">
+                    <Grid>
+                        <TextBlock Text="{Binding Name}" FontSize="9" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                        <Image Source="{Binding ImageUrl, Converter={StaticResource UriToImageSourceConverter}}" Stretch="UniformToFill" />
+                    </Grid>
+                </Border>
+                <TextBlock Text="{Binding PurchaseTimeLabel}" FontSize="11" FontWeight="SemiBold"
+                           HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+        </DataTemplate>
 
         <Style x:Key="ScoreboardHeaderTextStyle" TargetType="TextBlock">
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
             <Setter Property="FontSize" Value="12" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="ScoreboardStatTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
         <Style x:Key="ScoreboardGridStyle" TargetType="Grid">
-            <Setter Property="ColumnSpacing" Value="12" />
-            <Setter Property="HorizontalAlignment" Value="Left" />
-            <Setter Property="MinWidth" Value="672" />
+            <Setter Property="ColumnSpacing" Value="8" />
+
         </Style>
 
-        <DataTemplate x:Key="PlayerRowTemplate">
-            <Grid Style="{StaticResource ScoreboardGridStyle}" Margin="0,0,0,8">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="{StaticResource ScoreboardColPlayer}" />
-                    <ColumnDefinition Width="{StaticResource ScoreboardColHero}" />
-                    <ColumnDefinition Width="{StaticResource ScoreboardColRank}" />
-                    <ColumnDefinition Width="{StaticResource ScoreboardColMatches}" />
-                    <ColumnDefinition Width="{StaticResource ScoreboardColActions}" />
-                </Grid.ColumnDefinitions>
+        <!-- Team banner + column labels; Content is a TeamHeader. -->
+        <DataTemplate x:Key="TeamHeaderTemplate">
+            <Border Padding="8,6" Background="{ThemeResource SubtleFillColorSecondaryBrush}">
+                <Grid Style="{StaticResource ScoreboardGridStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="{StaticResource ScoreboardColPlayer}" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="{StaticResource ScoreboardColActions}" />
+                    </Grid.ColumnDefinitions>
 
-                <StackPanel
-                    Grid.Column="0"
-                    Orientation="Horizontal"
-                    Spacing="10"
-                    VerticalAlignment="Center">
-                    <PersonPicture
-                        Width="32"
-                        Height="32"
-                        DisplayName="{Binding Name}"
-                        ProfilePicture="{Binding AvatarUrl, Converter={StaticResource UriToImageSourceConverter}}" />
-                    <StackPanel Spacing="2" VerticalAlignment="Center">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <HyperlinkButton
-                                Padding="0"
-                                VerticalAlignment="Center"
-                                Content="{Binding Name}"
-                                Click="OnPlayerNameClick" />
-                            <FontIcon
-                                FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                FontSize="12"
-                                Glyph="&#xE72E;"
-                                VerticalAlignment="Center"
-                                ToolTipService.ToolTip="Private profile"
-                                Visibility="{Binding IsProfilePrivate, Converter={StaticResource BoolToVisible}}" />
+                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <Border Width="4" Height="34" CornerRadius="2" Background="{Binding AccentBrush}" />
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Title}" Style="{StaticResource SubtitleTextBlockStyle}" />
                         </StackPanel>
-                        <TextBlock
-                            FontSize="11"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="{Binding OverviewSubtitle}"
-                            Visibility="{Binding OverviewSubtitle, Converter={StaticResource NonEmptyToVisible}}" />
                     </StackPanel>
-                </StackPanel>
-
-                <Image
-                    Grid.Column="1"
-                    Width="48"
-                    Height="27"
-                    VerticalAlignment="Center"
-                    Stretch="UniformToFill"
-                    Source="{Binding HeroImageUrl, Converter={StaticResource UriToImageSourceConverter}}"
-                    ToolTipService.ToolTip="{Binding DisplayHeroName}"
-                    Visibility="{Binding HeroImageUrl, Converter={StaticResource NonEmptyToVisible}}" />
-
-                <Grid
-                    Grid.Column="2"
-                    Width="32"
-                    Height="32"
-                    VerticalAlignment="Center"
-                    ToolTipService.ToolTip="{Binding RankLabel}"
-                    Visibility="{Binding RankIconUrl, Converter={StaticResource NonEmptyToVisible}}">
-                    <Image
-                        Stretch="Uniform"
-                        Source="{Binding RankIconUrl, Converter={StaticResource UriToImageSourceConverter}}" />
-                    <Image
-                        Stretch="Uniform"
-                        Source="{Binding RankStarUrl, Converter={StaticResource UriToImageSourceConverter}}"
-                        Visibility="{Binding RankStarUrl, Converter={StaticResource NonEmptyToVisible}}" />
+                    <ScrollViewer Grid.Column="1" HorizontalScrollMode="Enabled" HorizontalScrollBarVisibility="Hidden"
+                                  VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled"
+                                  Loaded="OnStatsScrollLoaded" Unloaded="OnStatsScrollUnloaded"
+                                  ViewChanged="OnStatsScrollViewChanged">
+                        <Grid ColumnSpacing="8" HorizontalAlignment="Left" PointerWheelChanged="OnStatsPointerWheelChanged">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="{StaticResource ScoreboardColMatches}" />
+                                <ColumnDefinition Width="{StaticResource ScoreboardColLastMatch}" />
+                                <ColumnDefinition Width="{StaticResource ScoreboardColRecentMatches}" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Style="{StaticResource ScoreboardHeaderTextStyle}" Text="MATCHES" />
+                            <TextBlock Grid.Column="2" Style="{StaticResource ScoreboardHeaderTextStyle}" Text="RECENT MATCHES"
+                                       ToolTipService.ToolTip="Last 5 completed matches, newest first" />
+                            <TextBlock Grid.Column="1" Style="{StaticResource ScoreboardHeaderTextStyle}" Text="LAST MATCH AS THIS HERO"
+                                       ToolTipService.ToolTip="Result, KDA, and final items from this player's latest completed match on this hero" />
+                        </Grid>
+                    </ScrollViewer>
+                    <Border Grid.Column="2"
+                            BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="1,0,0,0"
+                            Padding="8,0,0,0">
+                        <TextBlock Style="{StaticResource ScoreboardHeaderTextStyle}" Text="ACTIONS" />
+                    </Border>
                 </Grid>
+            </Border>
+        </DataTemplate>
 
-                <TextBlock
-                    Grid.Column="3"
-                    VerticalAlignment="Center"
-                    Text="{Binding MatchesLabel}"
-                    ToolTipService.ToolTip="Total matches (wins + losses)" />
+        <DataTemplate x:Key="PlayerRowTemplate">
+            <Grid>
+                <!-- Highlights the local player's row. -->
+                <Rectangle Fill="{ThemeResource AccentFillColorDefaultBrush}" Opacity="0.14"
+                           Visibility="{Binding IsLocalPlayer, Converter={StaticResource BoolToVisible}}" />
+                <Border Padding="8,6"
+                        BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                        BorderThickness="0,1,0,0">
+                    <Grid Style="{StaticResource ScoreboardGridStyle}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="{StaticResource ScoreboardColPlayer}" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="{StaticResource ScoreboardColActions}" />
+                        </Grid.ColumnDefinitions>
 
-                <StackPanel
-                    Grid.Column="4"
-                    Orientation="Horizontal"
-                    Spacing="8"
-                    VerticalAlignment="Center">
-                    <Button
-                        Padding="8,4"
-                        MinWidth="0"
-                        AutomationProperties.Name="Like player"
-                        Click="OnLikeClick"
-                        IsEnabled="{Binding CanVote}"
-                        ToolTipService.ToolTip="{Binding LikeToolTip}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <FontIcon
-                                FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                FontSize="14"
-                                Glyph="{Binding LikeGlyph}" />
-                            <TextBlock Text="{Binding LikeCount}" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
-                    <Button
-                        Padding="8,4"
-                        MinWidth="0"
-                        AutomationProperties.Name="Dislike player"
-                        Click="OnDislikeClick"
-                        IsEnabled="{Binding CanVote}"
-                        ToolTipService.ToolTip="{Binding DislikeToolTip}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <FontIcon
-                                FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                FontSize="14"
-                                Glyph="{Binding DislikeGlyph}" />
-                            <TextBlock Text="{Binding DislikeCount}" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
-                    <Button
-                        Padding="8,4"
-                        MinWidth="0"
-                        AutomationProperties.Name="{Binding NoteButtonLabel}"
-                        Click="OnAddNoteClick"
-                        ToolTipService.ToolTip="{Binding NoteToolTip}">
-                        <FontIcon
-                            FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                            FontSize="14"
-                            Glyph="{Binding NoteGlyph}" />
-                    </Button>
-                </StackPanel>
+                        <!-- Hero portrait, then name / hero. -->
+                        <Grid
+                            Grid.Column="0"
+                            ColumnSpacing="10"
+                            VerticalAlignment="Center">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="64" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid Width="64" Height="36"
+                                  ToolTipService.ToolTip="{Binding DisplayHeroName}">
+                                <Border Background="{ThemeResource ControlFillColorDefaultBrush}" CornerRadius="3" />
+                                <Image
+                                    Stretch="UniformToFill"
+                                    Source="{Binding HeroImageUrl, Converter={StaticResource UriToImageSourceConverter}}"
+                                    Visibility="{Binding HeroImageUrl, Converter={StaticResource NonEmptyToVisible}}" />
+                            </Grid>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <Grid ColumnSpacing="6" HorizontalAlignment="Left">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <HyperlinkButton
+                                        Padding="0"
+                                        VerticalAlignment="Center"
+                                        HorizontalContentAlignment="Left"
+                                        ToolTipService.ToolTip="{Binding Name}"
+                                        AutomationProperties.Name="{Binding Name}"
+                                        Click="OnPlayerNameClick">
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    </HyperlinkButton>
+                                    <FontIcon
+                                        Grid.Column="1"
+                                        FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                        FontSize="12"
+                                        Glyph="&#xE72E;"
+                                        VerticalAlignment="Center"
+                                        ToolTipService.ToolTip="Dota match history unavailable"
+                                        Visibility="{Binding IsProfilePrivate, Converter={StaticResource BoolToVisible}}" />
+                                </Grid>
+                                <TextBlock Text="{Binding HeroNameUpper}" FontSize="11"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <!-- Rank medal sits at the end of the player cell. -->
+                            <Button Grid.Column="2" Padding="2" MinWidth="0"
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding CanEditRank, Converter={StaticResource BoolToVisible}}"
+                                    Click="OnEditRankClick" AutomationProperties.Name="Edit player rank"
+                                    AutomationProperties.AutomationId="EditPlayerRankButton"
+                                    ToolTipService.ToolTip="Set or clear a manual rank">
+                                <Grid Width="36" Height="36" VerticalAlignment="Center"
+                                      ToolTipService.ToolTip="{Binding RankLabel}">
+                                    <TextBlock Text="+" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                               Visibility="{Binding RankIconUrl, Converter={StaticResource EmptyToVisible}}" />
+                                    <Image Stretch="Uniform"
+                                           Source="{Binding RankIconUrl, Converter={StaticResource UriToImageSourceConverter}}" />
+                                    <Image Stretch="Uniform"
+                                           Source="{Binding RankStarUrl, Converter={StaticResource UriToImageSourceConverter}}"
+                                           Visibility="{Binding RankStarUrl, Converter={StaticResource NonEmptyToVisible}}" />
+                                    <Border HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                            Padding="3,0" CornerRadius="3"
+                                            Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
+                                            BorderBrush="{ThemeResource SystemFillColorCautionBrush}" BorderThickness="1"
+                                            Visibility="{Binding RankIsEstimated, Converter={StaticResource BoolToVisible}}">
+                                        <TextBlock Text="~" FontSize="10" FontWeight="SemiBold" />
+                                    </Border>
+                                </Grid>
+                            </Button>
+                            <Grid Grid.Column="2" VerticalAlignment="Center"
+                                  Visibility="{Binding CanEditRank, Converter={StaticResource BoolToCollapsed}}">
+                                <Grid Width="36" Height="36"
+                                      ToolTipService.ToolTip="{Binding RankLabel}"
+                                      Visibility="{Binding RankIconUrl, Converter={StaticResource NonEmptyToVisible}}">
+                                    <Image Stretch="Uniform"
+                                           Source="{Binding RankIconUrl, Converter={StaticResource UriToImageSourceConverter}}" />
+                                    <Image Stretch="Uniform"
+                                           Source="{Binding RankStarUrl, Converter={StaticResource UriToImageSourceConverter}}"
+                                           Visibility="{Binding RankStarUrl, Converter={StaticResource NonEmptyToVisible}}" />
+                                    <Border HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                            Padding="3,0" CornerRadius="3"
+                                            Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
+                                            BorderBrush="{ThemeResource SystemFillColorCautionBrush}" BorderThickness="1"
+                                            Visibility="{Binding RankIsEstimated, Converter={StaticResource BoolToVisible}}">
+                                        <TextBlock Text="~" FontSize="10" FontWeight="SemiBold" />
+                                    </Border>
+                                </Grid>
+                            </Grid>
+                        </Grid>
+
+                        <ScrollViewer Grid.Column="1" HorizontalScrollMode="Enabled" HorizontalScrollBarVisibility="Hidden"
+                                      VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled"
+                                      Loaded="OnStatsScrollLoaded" Unloaded="OnStatsScrollUnloaded"
+                                      ViewChanged="OnStatsScrollViewChanged">
+                            <Grid ColumnSpacing="8" HorizontalAlignment="Left" PointerWheelChanged="OnStatsPointerWheelChanged">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="{StaticResource ScoreboardColMatches}" />
+                                    <ColumnDefinition Width="{StaticResource ScoreboardColLastMatch}" />
+                                    <ColumnDefinition Width="{StaticResource ScoreboardColRecentMatches}" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    Grid.Column="0"
+                                    VerticalAlignment="Center"
+                                    Text="{Binding MatchesLabel}"
+                                    ToolTipService.ToolTip="Matches recorded by OpenDota, including Turbo (wins + losses)" />
+
+                                <Grid Grid.Column="2" VerticalAlignment="Center">
+                                    <TextBlock Text="—" AutomationProperties.AutomationId="PrivateRecentMatchesText"
+                                               Visibility="{Binding IsProfilePrivate, Converter={StaticResource BoolToVisible}}" />
+                                    <Grid ToolTipService.ToolTip="{Binding History.RecentMatchesLabel}"
+                                          Visibility="{Binding IsProfilePrivate, Converter={StaticResource BoolToCollapsed}}">
+                                        <TextBlock Text="{Binding History.RecentMatchesLabel}" FontSize="12" TextWrapping="Wrap"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                   Visibility="{Binding History.HasRecentMatches, Converter={StaticResource BoolToCollapsed}}" />
+                                        <ItemsControl ItemsSource="{Binding History.RecentMatches}"
+                                                      AutomationProperties.AutomationId="RecentMatchesList">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="6" /></ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Width="48" Spacing="2" ToolTipService.ToolTip="{Binding ToolTip}">
+                                                        <Grid Height="27" Background="{ThemeResource ControlFillColorDefaultBrush}">
+                                                            <TextBlock Text="{Binding HeroName}" FontSize="9" TextTrimming="CharacterEllipsis" />
+                                                            <Image Source="{Binding HeroImageUrl, Converter={StaticResource UriToImageSourceConverter}}"
+                                                                   Stretch="UniformToFill" AutomationProperties.Name="{Binding HeroName}" />
+                                                        </Grid>
+                                                        <Grid>
+                                                            <Border CornerRadius="3" Background="{ThemeResource SystemFillColorSuccessBackgroundBrush}"
+                                                                    Visibility="{Binding Result, Converter={StaticResource StringEqualsToVisible}, ConverterParameter=Win}">
+                                                                <TextBlock Text="Win" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center"
+                                                                           Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
+                                                            </Border>
+                                                            <Border CornerRadius="3" Background="{ThemeResource SystemFillColorCriticalBackgroundBrush}"
+                                                                    Visibility="{Binding Result, Converter={StaticResource StringEqualsToVisible}, ConverterParameter=Loss}">
+                                                                <TextBlock Text="Loss" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center"
+                                                                           Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                                                            </Border>
+                                                        </Grid>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Grid>
+                                </Grid>
+                                <Grid Grid.Column="1" ColumnSpacing="8" VerticalAlignment="Center"
+                                      ToolTipService.ToolTip="{Binding History.HeroMatchLabel}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="160" />
+                                        <ColumnDefinition Width="472" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2"
+                                                ToolTipService.ToolTip="{Binding History.HeroMatchLabel}">
+                                        <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Left">
+                                            <Border Padding="6,2" CornerRadius="4" VerticalAlignment="Center"
+                                                    Background="{ThemeResource SystemFillColorSuccessBackgroundBrush}"
+                                                    Visibility="{Binding History.Result, Converter={StaticResource StringEqualsToVisible}, ConverterParameter=Win}">
+                                                <TextBlock Text="Win" FontSize="11" FontWeight="SemiBold"
+                                                           Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
+                                            </Border>
+                                            <Border Padding="6,2" CornerRadius="4" VerticalAlignment="Center"
+                                                    Background="{ThemeResource SystemFillColorCriticalBackgroundBrush}"
+                                                    Visibility="{Binding History.Result, Converter={StaticResource StringEqualsToVisible}, ConverterParameter=Loss}">
+                                                <TextBlock Text="Loss" FontSize="11" FontWeight="SemiBold"
+                                                           Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                                            </Border>
+                                            <PathIcon Width="16" Height="16" VerticalAlignment="Center"
+                                                      Data="{Binding History.Position, Converter={StaticResource PositionToIconConverter}}"
+                                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                      ToolTipService.ToolTip="{Binding History.PositionToolTip}"
+                                                      AutomationProperties.Name="{Binding History.PositionToolTip}"
+                                                      AutomationProperties.AutomationId="LatestHeroPositionIcon"
+                                                      Visibility="{Binding History.HasHeroMatch, Converter={StaticResource BoolToVisible}}" />
+                                            <TextBlock Style="{StaticResource ScoreboardStatTextStyle}"
+                                                       Text="{Binding History.Kda}"
+                                                       AutomationProperties.AutomationId="LatestHeroKdaText" />
+                                        </StackPanel>
+                                        <HyperlinkButton Content="{Binding History.RelativeMatchTime}"
+                                                         NavigateUri="{Binding History.HeroMatchUrl}"
+                                                         Padding="0" FontSize="12" HorizontalAlignment="Left"
+                                                         AutomationProperties.AutomationId="ViewHeroMatchButton"
+                                                         Visibility="{Binding History.HasHeroMatch, Converter={StaticResource BoolToVisible}}" />
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                        <ItemsControl ItemsSource="{Binding History.VisibleItems}" ItemTemplate="{StaticResource PurchaseItemTemplate}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="4" /></ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                        </ItemsControl>
+                                        <Button Content="{Binding History.OverflowLabel}" Width="32" Height="26" MinWidth="0" MinHeight="0"
+                                                Padding="0" VerticalAlignment="Top" FontSize="12" FontWeight="SemiBold"
+                                                AutomationProperties.Name="Show more item purchases"
+                                                Visibility="{Binding History.HasOverflowItems, Converter={StaticResource BoolToVisible}}">
+                                            <Button.Flyout>
+                                                <Flyout>
+                                                    <ScrollViewer MaxWidth="480" HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled">
+                                                        <ItemsControl ItemsSource="{Binding History.OverflowItems}" ItemTemplate="{StaticResource PurchaseItemTemplate}">
+                                                            <ItemsControl.ItemsPanel>
+                                                                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="4" /></ItemsPanelTemplate>
+                                                            </ItemsControl.ItemsPanel>
+                                                        </ItemsControl>
+                                                    </ScrollViewer>
+                                                </Flyout>
+                                            </Button.Flyout>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+                            </Grid>
+                        </ScrollViewer>
+                        <Border Grid.Column="2"
+                                BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="1,0,0,0">
+                            <Grid>
+                                <StackPanel
+                                    Margin="8,0,0,0"
+                                    Orientation="Horizontal"
+                                    Spacing="8"
+                                    VerticalAlignment="Center">
+                                    <ToggleButton
+                                        Padding="8,4"
+                                        MinWidth="0"
+                                        AutomationProperties.Name="Like player"
+                                        AutomationProperties.AutomationId="LikePlayerButton"
+                                        IsChecked="{Binding IsLikedThisMatch, Mode=OneWay}"
+                                        Click="OnLikeClick"
+                                        IsEnabled="{Binding CanVote}"
+                                        ToolTipService.ToolTip="{Binding LikeToolTip}">
+                                        <ToggleButton.Resources>
+                                            <StaticResource x:Key="ToggleButtonBackgroundChecked" ResourceKey="SystemFillColorSuccessBackgroundBrush" />
+                                            <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="SystemFillColorSuccessBackgroundBrush" />
+                                            <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="SystemFillColorSuccessBackgroundBrush" />
+                                            <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="SystemFillColorSuccessBrush" />
+                                            <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="SystemFillColorSuccessBrush" />
+                                            <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="SystemFillColorSuccessBrush" />
+                                            <StaticResource x:Key="ToggleButtonBorderBrushChecked" ResourceKey="SystemFillColorSuccessBrush" />
+                                            <StaticResource x:Key="ToggleButtonBorderBrushCheckedPointerOver" ResourceKey="SystemFillColorSuccessBrush" />
+                                            <StaticResource x:Key="ToggleButtonBorderBrushCheckedPressed" ResourceKey="SystemFillColorSuccessBrush" />
+                                        </ToggleButton.Resources>
+                                        <FontIcon
+                                            FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                            FontSize="14"
+                                            Glyph="{Binding LikeGlyph}" />
+                                    </ToggleButton>
+                                    <ToggleButton
+                                        Padding="8,4"
+                                        MinWidth="0"
+                                        AutomationProperties.Name="Dislike player"
+                                        AutomationProperties.AutomationId="DislikePlayerButton"
+                                        IsChecked="{Binding IsDislikedThisMatch, Mode=OneWay}"
+                                        Click="OnDislikeClick"
+                                        IsEnabled="{Binding CanVote}"
+                                        ToolTipService.ToolTip="{Binding DislikeToolTip}">
+                                        <ToggleButton.Resources>
+                                            <StaticResource x:Key="ToggleButtonBackgroundChecked" ResourceKey="SystemFillColorCriticalBackgroundBrush" />
+                                            <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="SystemFillColorCriticalBackgroundBrush" />
+                                            <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="SystemFillColorCriticalBackgroundBrush" />
+                                            <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="SystemFillColorCriticalBrush" />
+                                            <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="SystemFillColorCriticalBrush" />
+                                            <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="SystemFillColorCriticalBrush" />
+                                            <StaticResource x:Key="ToggleButtonBorderBrushChecked" ResourceKey="SystemFillColorCriticalBrush" />
+                                            <StaticResource x:Key="ToggleButtonBorderBrushCheckedPointerOver" ResourceKey="SystemFillColorCriticalBrush" />
+                                            <StaticResource x:Key="ToggleButtonBorderBrushCheckedPressed" ResourceKey="SystemFillColorCriticalBrush" />
+                                        </ToggleButton.Resources>
+                                        <FontIcon
+                                            FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                            FontSize="14"
+                                            Glyph="{Binding DislikeGlyph}" />
+                                    </ToggleButton>
+                                    <ToggleButton
+                                        Padding="8,4"
+                                        MinWidth="0"
+                                        AutomationProperties.Name="Toxic player"
+                                        AutomationProperties.AutomationId="ToxicPlayerButton"
+                                        IsChecked="{Binding IsToxic, Mode=OneWay}"
+                                        Click="OnToxicClick"
+                                        IsEnabled="{Binding CanMarkToxic}"
+                                        ToolTipService.ToolTip="{Binding ToxicToolTip}">
+                                        <ToggleButton.Resources>
+                                            <StaticResource x:Key="ToggleButtonBackgroundChecked" ResourceKey="SystemFillColorCautionBackgroundBrush" />
+                                            <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="SystemFillColorCautionBackgroundBrush" />
+                                            <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="SystemFillColorCautionBackgroundBrush" />
+                                            <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="SystemFillColorCautionBrush" />
+                                            <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="SystemFillColorCautionBrush" />
+                                            <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="SystemFillColorCautionBrush" />
+                                            <StaticResource x:Key="ToggleButtonBorderBrushChecked" ResourceKey="SystemFillColorCautionBrush" />
+                                            <StaticResource x:Key="ToggleButtonBorderBrushCheckedPointerOver" ResourceKey="SystemFillColorCautionBrush" />
+                                            <StaticResource x:Key="ToggleButtonBorderBrushCheckedPressed" ResourceKey="SystemFillColorCautionBrush" />
+                                        </ToggleButton.Resources>
+                                        <FontIcon
+                                            FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                            FontSize="14"
+                                            Glyph="&#xE7BA;" />
+                                    </ToggleButton>
+                                    <Button
+                                        Padding="8,4"
+                                        MinWidth="0"
+                                        AutomationProperties.Name="{Binding NoteButtonLabel}"
+                                        Click="OnAddNoteClick"
+                                        ToolTipService.ToolTip="{Binding NoteToolTip}">
+                                        <FontIcon
+                                            FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                            FontSize="14"
+                                            Glyph="{Binding NoteGlyph}" />
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Border>
             </Grid>
         </DataTemplate>
     </Page.Resources>
 
     <Grid x:Name="LayoutRoot">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
         <ScrollViewer
-            HorizontalScrollBarVisibility="Auto"
+            x:Name="MatchScrollViewer"
+            HorizontalScrollBarVisibility="Disabled"
             VerticalScrollBarVisibility="Auto"
-            HorizontalScrollMode="Auto"
+            HorizontalScrollMode="Disabled"
             VerticalScrollMode="Auto">
             <StackPanel
                 x:Name="ContentColumn"
                 Padding="32"
-                Spacing="24"
-                HorizontalAlignment="Left"
+                Spacing="20"
+                HorizontalAlignment="Stretch"
                 VerticalAlignment="Top">
                 <StackPanel Spacing="8">
                     <TextBlock Text="Match" Style="{StaticResource TitleTextBlockStyle}" />
@@ -178,28 +453,20 @@
                         TextWrapping="WrapWholeWords" />
                 </StackPanel>
 
+                <InfoBar x:Name="RankSaveStatus" IsOpen="False" IsClosable="True" />
+
                 <Border
-                    Padding="20"
+                    x:Name="RadiantPlayersCard"
+                    Visibility="Collapsed"
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="12">
-                    <StackPanel Spacing="12">
-                        <TextBlock Text="Radiant" Style="{StaticResource SubtitleTextBlockStyle}" />
-                        <Grid Style="{StaticResource ScoreboardGridStyle}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="{StaticResource ScoreboardColPlayer}" />
-                                <ColumnDefinition Width="{StaticResource ScoreboardColHero}" />
-                                <ColumnDefinition Width="{StaticResource ScoreboardColRank}" />
-                                <ColumnDefinition Width="{StaticResource ScoreboardColMatches}" />
-                                <ColumnDefinition Width="{StaticResource ScoreboardColActions}" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Style="{StaticResource ScoreboardHeaderTextStyle}" Text="Player" />
-                            <TextBlock Grid.Column="1" Style="{StaticResource ScoreboardHeaderTextStyle}" Text="Hero" />
-                            <TextBlock Grid.Column="2" Style="{StaticResource ScoreboardHeaderTextStyle}" Text="Rank" />
-                            <TextBlock Grid.Column="3" Style="{StaticResource ScoreboardHeaderTextStyle}" Text="Matches" />
-                            <TextBlock Grid.Column="4" Style="{StaticResource ScoreboardHeaderTextStyle}" Text="Actions" />
-                        </Grid>
+                    BorderThickness="1,1,1,0"
+                    CornerRadius="8">
+                    <StackPanel>
+                        <ContentControl
+                            x:Name="RadiantHeader"
+                            HorizontalContentAlignment="Stretch"
+                            ContentTemplate="{StaticResource TeamHeaderTemplate}" />
                         <ItemsControl
                             x:Name="RadiantPlayersList"
                             HorizontalContentAlignment="Stretch"
@@ -208,27 +475,17 @@
                 </Border>
 
                 <Border
-                    Padding="20"
+                    x:Name="DirePlayersCard"
+                    Visibility="Collapsed"
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="12">
-                    <StackPanel Spacing="12">
-                        <TextBlock Text="Dire" Style="{StaticResource SubtitleTextBlockStyle}" />
-                        <Grid Style="{StaticResource ScoreboardGridStyle}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="{StaticResource ScoreboardColPlayer}" />
-                                <ColumnDefinition Width="{StaticResource ScoreboardColHero}" />
-                                <ColumnDefinition Width="{StaticResource ScoreboardColRank}" />
-                                <ColumnDefinition Width="{StaticResource ScoreboardColMatches}" />
-                                <ColumnDefinition Width="{StaticResource ScoreboardColActions}" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Style="{StaticResource ScoreboardHeaderTextStyle}" Text="Player" />
-                            <TextBlock Grid.Column="1" Style="{StaticResource ScoreboardHeaderTextStyle}" Text="Hero" />
-                            <TextBlock Grid.Column="2" Style="{StaticResource ScoreboardHeaderTextStyle}" Text="Rank" />
-                            <TextBlock Grid.Column="3" Style="{StaticResource ScoreboardHeaderTextStyle}" Text="Matches" />
-                            <TextBlock Grid.Column="4" Style="{StaticResource ScoreboardHeaderTextStyle}" Text="Actions" />
-                        </Grid>
+                    BorderThickness="1,1,1,0"
+                    CornerRadius="8">
+                    <StackPanel>
+                        <ContentControl
+                            x:Name="DireHeader"
+                            HorizontalContentAlignment="Stretch"
+                            ContentTemplate="{StaticResource TeamHeaderTemplate}" />
                         <ItemsControl
                             x:Name="DirePlayersList"
                             HorizontalContentAlignment="Stretch"
@@ -238,32 +495,21 @@
 
                 <Border
                     x:Name="LobbyPlayersCard"
-                    Padding="20"
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="12"
+                    BorderThickness="1,1,1,0"
+                    CornerRadius="8"
                     Visibility="Collapsed">
-                    <StackPanel Spacing="12">
-                        <TextBlock Text="Lobby" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel>
+                        <ContentControl
+                            x:Name="LobbyHeader"
+                            HorizontalContentAlignment="Stretch"
+                            ContentTemplate="{StaticResource TeamHeaderTemplate}" />
                         <TextBlock
+                            Margin="16,8"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Text="Players without a Radiant/Dire assignment yet (common early in pick)."
                             TextWrapping="WrapWholeWords" />
-                        <Grid Style="{StaticResource ScoreboardGridStyle}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="{StaticResource ScoreboardColPlayer}" />
-                                <ColumnDefinition Width="{StaticResource ScoreboardColHero}" />
-                                <ColumnDefinition Width="{StaticResource ScoreboardColRank}" />
-                                <ColumnDefinition Width="{StaticResource ScoreboardColMatches}" />
-                                <ColumnDefinition Width="{StaticResource ScoreboardColActions}" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Style="{StaticResource ScoreboardHeaderTextStyle}" Text="Player" />
-                            <TextBlock Grid.Column="1" Style="{StaticResource ScoreboardHeaderTextStyle}" Text="Hero" />
-                            <TextBlock Grid.Column="2" Style="{StaticResource ScoreboardHeaderTextStyle}" Text="Rank" />
-                            <TextBlock Grid.Column="3" Style="{StaticResource ScoreboardHeaderTextStyle}" Text="Matches" />
-                            <TextBlock Grid.Column="4" Style="{StaticResource ScoreboardHeaderTextStyle}" Text="Actions" />
-                        </Grid>
                         <ItemsControl
                             x:Name="LobbyPlayersList"
                             HorizontalContentAlignment="Stretch"
@@ -272,5 +518,19 @@
                 </Border>
             </StackPanel>
         </ScrollViewer>
+        <Grid Grid.Row="1" Margin="41,0,41,16" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="{StaticResource ScoreboardColPlayer}" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="{StaticResource ScoreboardColActions}" />
+            </Grid.ColumnDefinitions>
+            <ScrollViewer x:Name="StatsScrollBar" Grid.Column="1"
+                          AutomationProperties.Name="Scroll match statistics"
+                          HorizontalScrollMode="Enabled" HorizontalScrollBarVisibility="Visible"
+                          VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled"
+                          ViewChanged="OnStatsScrollViewChanged">
+                <Border Width="736" Height="1" />
+            </ScrollViewer>
+        </Grid>
     </Grid>
 </Page>

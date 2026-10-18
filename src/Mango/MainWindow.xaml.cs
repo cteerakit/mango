@@ -1,6 +1,7 @@
 using Mango.Interop;
 using Mango.Services;
 using Mango.Views.Shell;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 
 namespace Mango;
@@ -15,6 +16,7 @@ public sealed partial class MainWindow : Window
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
+        ApplyTheme();
         AppWindow.SetIcon("Assets/AppIcon.ico");
         Title = "Mango";
 
@@ -37,6 +39,22 @@ public sealed partial class MainWindow : Window
         {
             shell.ReloadCurrentPage();
         }
+    }
+
+    internal void ApplyTheme()
+    {
+        LayoutRoot.RequestedTheme = AppServices.Settings.Theme switch
+        {
+            AppTheme.Light => ElementTheme.Light,
+            AppTheme.Dark => ElementTheme.Dark,
+            _ => ElementTheme.Default,
+        };
+        AppWindow.TitleBar.PreferredTheme = AppServices.Settings.Theme switch
+        {
+            AppTheme.Light => TitleBarTheme.Light,
+            AppTheme.Dark => TitleBarTheme.Dark,
+            _ => TitleBarTheme.UseDefaultAppMode,
+        };
     }
 
     private void OnClosed(object sender, WindowEventArgs args)

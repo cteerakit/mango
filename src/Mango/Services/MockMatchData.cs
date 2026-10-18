@@ -61,6 +61,122 @@ internal static class MockMatchData
         new BuildSuggestionItem { Name = "satanic" },
     ];
 
+    public static PlayerOverview CreatePlayerOverview(string steamId)
+    {
+        var player = CreatePlayers().FirstOrDefault(player => player.SteamId == steamId)
+            ?? CreatePlayers()[0];
+        ApplyPreviewDetails(player);
+        return new PlayerOverview
+        {
+            SteamId = steamId,
+            DisplayName = player.Name,
+            RankTier = player.ReportedRankTier,
+            RankLabel = player.RankLabel,
+            IsPrivate = player.IsProfilePrivate,
+            Wins = 2206,
+            Losses = 2004,
+            WinRatePercent = 52.4,
+            RecentMatches =
+            [
+                new PlayerMatchRow
+                {
+                    MatchId = "8000000000",
+                    HeroName = player.DisplayHeroName,
+                    Result = "Win",
+                    Kda = "12/3/9",
+                    Duration = "31:12",
+                    PlayedAt = "Today",
+                },
+            ],
+        };
+    }
+
+    private sealed record PreviewDetail(
+        int RankTier,
+        string Matches,
+        string Encounter,
+        string HeroMatch,
+        string[] Items,
+        bool IsPrivate = false,
+        string Kda = "—",
+        bool IsEstimated = false);
+
+    private static readonly Dictionary<string, PreviewDetail> PreviewDetails = new()
+    {
+        ["Mango Tester"] = new(75, "4,210 (52.4%)", "That's you.", "Latest on Juggernaut: Win · 31:12",
+            ["bfury", "power_treads", "manta", "black_king_bar", "butterfly", "abyssal_blade"], Kda: "12/3/9"),
+        ["Radiant Mid"] = new(63, "2,964 (50.1%)", "3/1", "Latest on Storm Spirit: Loss · 27:40",
+            ["bloodstone", "kaya_and_sange", "blink", "travel_boots", "shivas_guard", "octarine_core"], Kda: "7/8/11"),
+        ["Radiant Offlane"] = new(54, "1,508 (49.3%)", "0/0", "Latest on Tidehunter: Win · 35:02",
+            ["blink", "pipe", "crimson_guard", "arcane_boots", "heart"], Kda: "4/5/23"),
+        ["Radiant Support"] = new(41, "902 (47.8%)", "1/0", "Latest on Crystal Maiden: Win · 29:55",
+            ["glimmer_cape", "force_staff", "tranquil_boots", "aether_lens"], Kda: "3/7/28"),
+        ["Radiant Hard Support"] = new(35, "611 (51.0%)", "0/0", "Latest on Lich: Loss · 38:18",
+            ["spirit_vessel", "glimmer_cape", "arcane_boots", "ultimate_scepter"], Kda: "2/10/17"),
+        ["Dire Carry"] = new(71, "3,377 (54.9%)", "0/2", "Latest on Phantom Assassin: Win · 26:44",
+            ["desolator", "phase_boots", "black_king_bar", "satanic", "abyssal_blade", "butterfly"], Kda: "18/2/7"),
+        ["Dire Mid"] = new(62, "2,120 (48.6%)", "2/2", "Latest on Invoker: Win · 33:09",
+            ["hand_of_midas", "witch_blade", "travel_boots", "ultimate_scepter", "sheepstick"], Kda: "9/4/16"),
+        ["Dire Offlane"] = new(44, "1,244 (50.8%)", "0/0", "Latest on Axe: Loss · 30:21",
+            ["vanguard", "blink", "blade_mail", "boots", "heart"], Kda: "5/9/12", IsEstimated: true),
+        ["Dire Support"] = new(22, "—", "Encounter history unavailable.", "Hero match history unavailable.",
+            [], IsPrivate: true),
+        ["Dire Hard Support"] = new(53, "781 (46.2%)", "0/0", "Latest on Warlock: Loss · 41:07",
+            ["glimmer_cape", "ultimate_scepter", "aether_lens", "arcane_boots"], Kda: "1/8/25"),
+    };
+
+    /// <summary>Fills the OpenDota/Steam-derived fields so the preview renders offline.</summary>
+    public static void ApplyPreviewDetails(MatchPlayer player)
+    {
+        if (!PreviewDetails.TryGetValue(player.Name, out var detail))
+        {
+            return;
+        }
+
+        player.RankIconUrl = AssetUrls.RankIcon(detail.RankTier);
+        player.RankStarUrl = AssetUrls.RankStar(detail.RankTier);
+        player.RankLabel = detail.IsEstimated
+            ? $"Estimated: {OpenDotaService.FormatRankTier(detail.RankTier)} (from 12 recent solo ranked lobbies)"
+            : OpenDotaService.FormatRankTier(detail.RankTier);
+        player.RankIsEstimated = detail.IsEstimated;
+        player.ReportedRankTier = detail.IsEstimated ? null : detail.RankTier;
+        player.MatchesLabel = detail.Matches;
+        player.IsProfilePrivate = detail.IsPrivate;
+        player.History = new PlayerMatchHistory
+        {
+            EncounterLabel = detail.Encounter,
+            Kda = detail.Kda,
+            Position = detail.IsPrivate ? null : player.Name switch
+            {
+                "Radiant Mid" or "Dire Mid" => 2,
+                "Radiant Offlane" or "Dire Offlane" => 3,
+                "Radiant Support" or "Dire Support" => 4,
+                "Radiant Hard Support" or "Dire Hard Support" => 5,
+                _ => 1,
+            },
+            Result = detail.IsPrivate ? string.Empty : detail.HeroMatch.Contains("Loss") ? "Loss" : "Win",
+            PlayedAt = detail.IsPrivate ? null : DateTimeOffset.UtcNow.AddHours(-5),
+            HeroMatchLabel = detail.HeroMatch,
+            HeroMatchUrl = detail.IsPrivate ? string.Empty : "https://www.opendota.com/matches/8000000000",
+            RecentMatchesLabel = detail.IsPrivate ? "Recent matches unavailable." : "Last 5 completed matches, newest first",
+            RecentMatches = detail.IsPrivate ? [] : CreatePlayers().Take(5).Select((hero, index) => new RecentMatchSummary
+            {
+                HeroName = hero.DisplayHeroName,
+                HeroImageUrl = AssetUrls.HeroIcon(hero.HeroIconKey),
+                Result = index % 3 == 1 ? "Loss" : "Win",
+            }).ToList(),
+            Items = detail.Items
+                .Select(static (item, index) => new MatchBuildItem
+                {
+                    Name = item.Replace('_', ' '),
+                    ImageUrl = AssetUrls.ItemIcon(item),
+                    Slot = "Item",
+                    PurchaseTimeSeconds = 175 + index * 227,
+                })
+                .ToList(),
+        };
+    }
+
     public static IReadOnlyList<MatchPlayer> CreatePlayers() =>
     [
         new MatchPlayer

@@ -18,14 +18,11 @@
         CompactModeThresholdWidth="0"
         ExpandedModeThresholdWidth="1008"
         BackRequested="NavView_BackRequested"
-        SelectionChanged="NavView_SelectionChanged"
-        DisplayModeChanged="NavView_DisplayModeChanged"
-        PaneOpened="NavView_PaneOpened"
-        PaneClosed="NavView_PaneClosed">
+        SelectionChanged="NavView_SelectionChanged">
         <NavigationView.MenuItems>
-            <NavigationViewItem Content="Status" Tag="status">
+            <NavigationViewItem Content="You" Tag="you" AutomationProperties.AutomationId="NavYou">
                 <NavigationViewItem.Icon>
-                    <FontIcon Glyph="&#xE9D2;" />
+                    <FontIcon Glyph="&#xE8D4;" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
             <NavigationViewItem Content="Match" Tag="match">
@@ -60,33 +57,23 @@
             </NavigationViewItem>
         </NavigationView.MenuItems>
 
-        <NavigationView.PaneFooter>
-            <Border
-                Padding="16,12"
-                BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
-                BorderThickness="0,1,0,0">
-                <StackPanel
-                    x:Name="BriefStatusPanel"
-                    Orientation="Horizontal"
-                    Spacing="10"
-                    VerticalAlignment="Center"
-                    HorizontalAlignment="Left"
-                    ToolTipService.ToolTip="{x:Bind ViewModel.ConnectionStatus, Mode=OneWay}">
-                    <Ellipse
-                        Width="10"
-                        Height="10"
-                        VerticalAlignment="Center"
-                        Fill="{x:Bind ViewModel.ConnectionDotBrush, Mode=OneWay}" />
-                    <TextBlock
-                        x:Name="BriefStatusLabel"
-                        VerticalAlignment="Center"
+        <NavigationView.FooterMenuItems>
+            <NavigationViewItem
+                Tag="status"
+                Content="{x:Bind ViewModel.ConnectionStatus, Mode=OneWay}"
+                AutomationProperties.AutomationId="StatusButton"
+                AutomationProperties.Name="Open status page"
+                AutomationProperties.HelpText="{x:Bind ViewModel.ConnectionStatus, Mode=OneWay}"
+                ToolTipService.ToolTip="{x:Bind ViewModel.ConnectionStatus, Mode=OneWay}">
+                <NavigationViewItem.Icon>
+                    <FontIcon
+                        FontFamily="Segoe UI"
                         FontSize="12"
-                        Text="{x:Bind ViewModel.BriefConnectionLabel, Mode=OneWay}"
-                        TextTrimming="CharacterEllipsis"
-                        MaxWidth="140" />
-                </StackPanel>
-            </Border>
-        </NavigationView.PaneFooter>
+                        Glyph="&#x25CF;"
+                        Foreground="{x:Bind ViewModel.ConnectionDotBrush, Mode=OneWay}" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+        </NavigationView.FooterMenuItems>
 
         <Frame x:Name="ContentFrame" />
     </NavigationView>

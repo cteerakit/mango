@@ -177,13 +177,40 @@ public static class PlayerNotesTransfer
         notes.TryGetValue(key, out var existing);
         var trimmed = content.Trim();
         if (string.IsNullOrWhiteSpace(trimmed)
-            && (existing is null || (existing.LikeCount <= 0 && existing.DislikeCount <= 0)))
+            && (existing is null || (existing.LikeCount <= 0 && existing.DislikeCount <= 0 && !existing.IsToxic)))
         {
             notes.Remove(key);
             return;
         }
 
         notes[key] = WithIdentity(existing, playerName, playerId, trimmed);
+    }
+
+    public static bool TryToggleToxic(
+        Dictionary<string, PlayerNote> notes,
+        string playerName,
+        string playerId)
+    {
+        ArgumentNullException.ThrowIfNull(notes);
+        if (string.IsNullOrWhiteSpace(playerId))
+        {
+            return false;
+        }
+
+        var id = playerId.Trim();
+        TryGetByPlayerId(notes, id, out var existing);
+        var note = WithIdentity(existing, playerName, id, existing?.Content ?? string.Empty);
+        note.IsToxic = !note.IsToxic;
+        if (note.HasSavedData)
+        {
+            notes[note.StorageKey] = note;
+        }
+        else
+        {
+            notes.Remove(note.StorageKey);
+        }
+
+        return true;
     }
 
     public static bool TryVote(
@@ -411,6 +438,7 @@ public static class PlayerNotesTransfer
             Content = incoming.Content.Trim(),
             LikeCount = incoming.LikeCount,
             DislikeCount = incoming.DislikeCount,
+            IsToxic = incoming.IsToxic,
             LastVoteMatchId = FirstNonEmpty(incoming.LastVoteMatchId, existing.LastVoteMatchId),
             LastVote = FirstNonEmpty(incoming.LastVote, existing.LastVote),
             UpdatedAt = incoming.UpdatedAt ?? existing.UpdatedAt ?? DateTimeOffset.Now,
@@ -422,6 +450,7 @@ public static class PlayerNotesTransfer
         && string.Equals(left.PlayerId, right.PlayerId, StringComparison.Ordinal)
         && left.LikeCount == right.LikeCount
         && left.DislikeCount == right.DislikeCount
+        && left.IsToxic == right.IsToxic
         && string.Equals(left.LastVoteMatchId, right.LastVoteMatchId, StringComparison.OrdinalIgnoreCase)
         && string.Equals(left.LastVote, right.LastVote, StringComparison.OrdinalIgnoreCase);
 
@@ -433,6 +462,7 @@ public static class PlayerNotesTransfer
             Content = note.Content?.Trim() ?? string.Empty,
             LikeCount = note.LikeCount,
             DislikeCount = note.DislikeCount,
+            IsToxic = note.IsToxic,
             LastVoteMatchId = note.LastVoteMatchId?.Trim() ?? string.Empty,
             LastVote = note.LastVote?.Trim() ?? string.Empty,
             UpdatedAt = note.UpdatedAt,

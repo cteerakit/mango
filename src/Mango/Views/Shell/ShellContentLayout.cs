@@ -1,4 +1,8 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using Windows.System;
 
 namespace Mango.Views.Shell;
 
@@ -14,6 +18,8 @@ internal static class ShellContentLayout
     /// </summary>
     public static void Attach(FrameworkElement viewport, FrameworkElement column, double maxWidth = MaxWidth)
     {
+        column.PointerWheelChanged += OnColumnPointerWheelChanged;
+
         void Update()
         {
             var available = viewport.ActualWidth - HorizontalPadding;
@@ -35,6 +41,8 @@ internal static class ShellContentLayout
     /// </summary>
     public static void AttachExpanding(FrameworkElement viewport, FrameworkElement column)
     {
+        column.PointerWheelChanged += OnColumnPointerWheelChanged;
+
         void Update()
         {
             var available = viewport.ActualWidth - HorizontalPadding;
@@ -49,5 +57,38 @@ internal static class ShellContentLayout
 
         viewport.SizeChanged += (_, _) => Update();
         column.Loaded += (_, _) => Update();
+    }
+
+    private static void OnColumnPointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    {
+        if (e.KeyModifiers != VirtualKeyModifiers.Shift)
+        {
+            return;
+        }
+
+        var column = (FrameworkElement)sender;
+        var properties = e.GetCurrentPoint(column).Properties;
+        if (properties.IsHorizontalMouseWheel || properties.MouseWheelDelta == 0)
+        {
+            return;
+        }
+
+        // Handle on the content before the wheel reaches the ScrollViewer's vertical scrolling.
+        for (var parent = VisualTreeHelper.GetParent(column); parent is not null; parent = VisualTreeHelper.GetParent(parent))
+        {
+            if (parent is not ScrollViewer viewer)
+            {
+                continue;
+            }
+
+            if (viewer.ScrollableWidth > 0)
+            {
+                var offset = Math.Clamp(viewer.HorizontalOffset - properties.MouseWheelDelta, 0, viewer.ScrollableWidth);
+                viewer.ChangeView(offset, null, null, disableAnimation: true);
+                e.Handled = true;
+            }
+
+            return;
+        }
     }
 }

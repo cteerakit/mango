@@ -39,6 +39,24 @@ dotnet run --project src/Mango/Mango.csproj
 3. Add `-gamestateintegration` to Dota launch options in Steam if not already set.
 4. Start a match — live data updates from GSI on `http://127.0.0.1:40000/`. Open **Match** in the companion window for the roster, or enable the overlay for in-game widgets.
 
+## Reload during development
+
+For in-place XAML and C# Hot Reload, open `Mango.sln` in Visual Studio, select the **Mango (Package)** launch profile and **Debug / x64** (or **ARM64**), then press **F5**. Save supported edits while the debugger is attached. Some edits require restarting the app. See [Microsoft's WinUI runtime design tools guide](https://learn.microsoft.com/en-us/windows/apps/develop/ui/xaml-runtime-design-tools).
+
+For command-line development, close any running Mango instance, then run:
+
+```powershell
+.\scripts\watch.ps1
+```
+
+This watches source files, rebuilds, and restarts Mango after changes. It does not preserve the running UI state. Press **Ctrl+C** to stop.
+
+### Work with mock data
+
+In Mango, open **About > Open developer options** and turn on **Show mock data**. The same app shows sample match, player, and overlay data without a Dota match. The setting is saved across restarts, including when using `scripts\watch.ps1`.
+
+Turn it off to return to live data. The GSI listener and hotkeys stay available, and the overlay remains controlled by its normal visibility toggle.
+
 ## Hotkeys
 
 | Hotkey | Action |

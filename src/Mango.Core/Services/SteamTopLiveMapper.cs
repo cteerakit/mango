@@ -51,9 +51,9 @@ public static class SteamTopLiveMapper
     {
         var source = game.Players ?? [];
         var players = new List<MatchPlayer>(source.Count);
-        for (var index = 0; index < source.Count; index++)
+        // The live list carries no team data and its order is not team order, so sides stay unknown.
+        foreach (var player in source)
         {
-            var player = source[index];
             if (player.AccountId == 0)
             {
                 continue;
@@ -61,14 +61,10 @@ public static class SteamTopLiveMapper
 
             string? heroName = null;
             heroNames?.TryGetValue(player.HeroId, out heroName);
-            var isRadiant = source.Count >= 10 ? index < 5 : index < (source.Count + 1) / 2;
-
             players.Add(new MatchPlayer
             {
                 SteamId = player.AccountId.ToString(),
                 Name = player.AccountId.ToString(),
-                TeamName = isRadiant ? "radiant" : "dire",
-                TeamSlot = index % 5,
                 HeroName = heroName ?? string.Empty,
             });
         }
@@ -91,10 +87,9 @@ public static class SteamTopLiveMapper
     private static bool Matches(SteamTopLiveGame game, ulong? accountId, string? matchId)
     {
         if (PlayerNotesMatch.IsUsableMatchId(matchId)
-            && PlayerNotesMatch.IsUsableMatchId(game.MatchId)
-            && string.Equals(game.MatchId, matchId, StringComparison.OrdinalIgnoreCase))
+            && PlayerNotesMatch.IsUsableMatchId(game.MatchId))
         {
-            return true;
+            return string.Equals(game.MatchId, matchId, StringComparison.OrdinalIgnoreCase);
         }
 
         return accountId is > 0

@@ -24,9 +24,33 @@
                     <TextBlock Text="Settings" Style="{StaticResource TitleTextBlockStyle}" />
                     <TextBlock
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="App updates, API keys, and player-note backup."
+                        Text="Appearance, app updates, API keys, and player-note backup."
                         TextWrapping="WrapWholeWords" />
                 </StackPanel>
+
+                <Border
+                    Padding="20"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Appearance" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <RadioButtons
+                            x:Name="ThemeSelector"
+                            Header="App theme"
+                            AutomationProperties.AutomationId="ThemeSelector"
+                            MaxColumns="3">
+                            <RadioButton Content="Light" Tag="Light" AutomationProperties.AutomationId="ThemeLight" />
+                            <RadioButton Content="Dark" Tag="Dark" AutomationProperties.AutomationId="ThemeDark" />
+                            <RadioButton Content="System" Tag="System" AutomationProperties.AutomationId="ThemeSystem" />
+                        </RadioButtons>
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="System follows your Windows app theme. Changes are saved automatically."
+                            TextWrapping="WrapWholeWords" />
+                    </StackPanel>
+                </Border>
 
                 <Border
                     Padding="20"
@@ -68,6 +92,31 @@
                             PasswordRevealMode="Peek" />
                         <TextBlock
                             x:Name="SteamApiKeyStatus"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            TextWrapping="WrapWholeWords" />
+                    </StackPanel>
+                </Border>
+
+                <Border
+                    Padding="20"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="STRATZ API" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Used for accurate player positions in past matches. Without a token, positions are estimated from farm. Get a token from stratz.com/api."
+                            TextWrapping="WrapWholeWords" />
+                        <PasswordBox
+                            x:Name="StratzApiTokenBox"
+                            AutomationProperties.AutomationId="StratzApiTokenBox"
+                            AutomationProperties.Name="STRATZ API token"
+                            PasswordChanged="OnStratzApiTokenChanged"
+                            PasswordRevealMode="Peek" />
+                        <TextBlock
+                            x:Name="StratzApiTokenStatus"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             TextWrapping="WrapWholeWords" />
                     </StackPanel>

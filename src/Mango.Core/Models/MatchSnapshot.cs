@@ -45,6 +45,10 @@ public sealed class MatchSnapshot
         GameState.Contains("STRATEGY", StringComparison.OrdinalIgnoreCase);
     public bool IsInGame =>
         GameState.Contains("GAME_IN_PROGRESS", StringComparison.OrdinalIgnoreCase);
+    /// <summary>Draft through the end of the game, including loading, showcase and pre-horn.</summary>
+    public bool IsInMatch => IsInDraft || IsInGame
+        || GameState is "DOTA_GAMERULES_STATE_WAIT_FOR_PLAYERS_TO_LOAD"
+            or "DOTA_GAMERULES_STATE_TEAM_SHOWCASE" or "DOTA_GAMERULES_STATE_PRE_GAME";
 }
 
 public sealed class SlotSnapshot

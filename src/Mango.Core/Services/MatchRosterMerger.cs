@@ -11,12 +11,6 @@ public static class MatchRosterMerger
             return gsiPlayers;
         }
 
-        if (gsiPlayers.Count >= externalPlayers.Count
-            && CountIdentified(gsiPlayers) >= CountIdentified(externalPlayers))
-        {
-            return gsiPlayers;
-        }
-
         var gsiBySteamId = gsiPlayers
             .Select(static player => (Key: NormalizeSteamKey(player.SteamId), Player: player))
             .Where(static entry => !string.IsNullOrWhiteSpace(entry.Key))
@@ -90,6 +84,15 @@ public static class MatchRosterMerger
     public static int CountIdentified(IReadOnlyList<MatchPlayer> players) =>
         players.Count(static player =>
             !string.IsNullOrWhiteSpace(player.SteamId) || !string.IsNullOrWhiteSpace(player.Name));
+
+    public static int CountHeroes(IReadOnlyList<MatchPlayer> players) =>
+        players.Count(static player => !string.IsNullOrWhiteSpace(player.HeroIconKey));
+
+    public static int CountTeamed(IReadOnlyList<MatchPlayer> players) =>
+        players.Count(static player => TeamSortOrder(player.TeamName) < 2);
+
+    public static bool NeedsRefresh(IReadOnlyList<MatchPlayer> players) =>
+        CountIdentified(players) < 10 || CountHeroes(players) < 10 || CountTeamed(players) < 10;
 
     private static MatchPlayer OverlayGsiPlayer(MatchPlayer external, MatchPlayer gsi)
     {

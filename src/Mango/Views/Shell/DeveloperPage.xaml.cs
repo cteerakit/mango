@@ -28,12 +28,12 @@ public sealed partial class DeveloperPage : Page
         _suppressEvents = true;
         BuildToggle.IsOn = viewModel.ShowBuildPanel;
         TimerAlertsToggle.IsOn = viewModel.TimerSoundsEnabled;
-        DebugPreviewToggle.IsOn = viewModel.DebugOverlayPreview;
+        MockDataToggle.IsOn = viewModel.ShowMockData;
         _suppressEvents = false;
 
         BuildToggle.Toggled += OnSettingChanged;
         TimerAlertsToggle.Toggled += OnSettingChanged;
-        DebugPreviewToggle.Toggled += OnSettingChanged;
+        MockDataToggle.Toggled += OnSettingChanged;
     }
 
     private void OnSettingChanged(object sender, RoutedEventArgs e)
@@ -45,7 +45,7 @@ public sealed partial class DeveloperPage : Page
 
         _viewModel.ShowBuildPanel = BuildToggle.IsOn;
         _viewModel.TimerSoundsEnabled = TimerAlertsToggle.IsOn;
-        _viewModel.DebugOverlayPreview = DebugPreviewToggle.IsOn;
+        _viewModel.ShowMockData = MockDataToggle.IsOn;
         _viewModel.SaveSettingsCommand.Execute(null);
     }
 }

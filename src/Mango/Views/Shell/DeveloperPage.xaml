@@ -24,7 +24,7 @@
                     <TextBlock Text="Developer" Style="{StaticResource TitleTextBlockStyle}" />
                     <TextBlock
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Unfinished features and tools for working on the overlay itself."
+                        Text="Experimental features and tools for working on Mango."
                         TextWrapping="WrapWholeWords" />
                 </StackPanel>
 
@@ -70,11 +70,12 @@
                     <StackPanel Spacing="12">
                         <TextBlock Text="Debug" Style="{StaticResource SubtitleTextBlockStyle}" />
                         <ToggleSwitch
-                            x:Name="DebugPreviewToggle"
-                            Header="Preview overlay with mock data" />
+                            x:Name="MockDataToggle"
+                            AutomationProperties.AutomationId="MockDataToggle"
+                            Header="Show mock data" />
                         <TextBlock
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="Shows sample GPM/XPM, timers, and build so you can design without launching Dota."
+                            Text="Shows sample match, player, and overlay data without launching Dota. Turn off to return to live data."
                             TextWrapping="WrapWholeWords" />
                     </StackPanel>
                 </Border>

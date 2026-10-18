@@ -25,9 +25,6 @@ public sealed partial class ShellViewModel : ObservableObject
     private string _connectionStatus = "Waiting for Dota 2";
 
     [ObservableProperty]
-    private string _briefConnectionLabel = "Waiting";
-
-    [ObservableProperty]
     private string _lastUpdate = "—";
 
     [ObservableProperty]
@@ -43,7 +40,7 @@ public sealed partial class ShellViewModel : ObservableObject
     private bool _timerSoundsEnabled;
 
     [ObservableProperty]
-    private bool _debugOverlayPreview;
+    private bool _showMockData;
 
     [ObservableProperty]
     private bool _showPlayerPanel;
@@ -86,7 +83,7 @@ public sealed partial class ShellViewModel : ObservableObject
         IsTurboMode = _settings.IsTurboMode;
         RuneTimerLeadSeconds = _settings.RuneTimerLeadSeconds;
         TimerSoundsEnabled = _settings.TimerSoundsEnabled;
-        DebugOverlayPreview = _settings.DebugOverlayPreview;
+        ShowMockData = _settings.ShowMockData;
         ShowPlayerPanel = _settings.ShowPlayerPanel;
         ShowBountyTimer = _settings.ShowBountyTimer;
         ShowPowerTimer = _settings.ShowPowerTimer;
@@ -101,7 +98,7 @@ public sealed partial class ShellViewModel : ObservableObject
         {
             if (e.PropertyName is nameof(MatchStore.ConnectionStatus)
                 or nameof(MatchStore.IsGsiConnected)
-                or nameof(MatchStore.IsDebugPreview)
+                or nameof(MatchStore.IsUsingMockData)
                 or null)
             {
                 RefreshBriefConnectionStatus();
@@ -124,9 +121,8 @@ public sealed partial class ShellViewModel : ObservableObject
         var store = AppServices.MatchStore;
         ConnectionStatus = store.ConnectionStatus;
 
-        if (store.IsDebugPreview)
+        if (store.IsUsingMockData)
         {
-            BriefConnectionLabel = "Debug";
             SetDotColor(Color.FromArgb(255, 59, 130, 246));
             return;
         }
@@ -134,19 +130,16 @@ public sealed partial class ShellViewModel : ObservableObject
         if (store.IsGsiConnected
             && store.ConnectionStatus.Contains("Live", StringComparison.OrdinalIgnoreCase))
         {
-            BriefConnectionLabel = "Live";
             SetDotColor(Color.FromArgb(255, 22, 163, 74));
             return;
         }
 
         if (store.IsGsiConnected)
         {
-            BriefConnectionLabel = "Connected";
             SetDotColor(Color.FromArgb(255, 202, 138, 4));
             return;
         }
 
-        BriefConnectionLabel = "Waiting";
         SetDotColor(Color.FromArgb(255, 156, 163, 175));
     }
 
@@ -206,7 +199,7 @@ public sealed partial class ShellViewModel : ObservableObject
         _settings.IsTurboMode = IsTurboMode;
         _settings.RuneTimerLeadSeconds = RuneTimerLeadSeconds;
         _settings.TimerSoundsEnabled = TimerSoundsEnabled;
-        _settings.DebugOverlayPreview = DebugOverlayPreview;
+        _settings.ShowMockData = ShowMockData;
         _settings.ShowPlayerPanel = ShowPlayerPanel;
         _settings.ShowBountyTimer = ShowBountyTimer;
         _settings.ShowPowerTimer = ShowPowerTimer;
@@ -215,7 +208,7 @@ public sealed partial class ShellViewModel : ObservableObject
         _settings.ShowBuildPanel = ShowBuildPanel;
         _settings.Save();
         AppServices.OverlayService.ApplySettings();
-        AppServices.ApplyDebugOverlayMode();
+        AppServices.ApplyMockDataMode();
     }
 
     [RelayCommand]

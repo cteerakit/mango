@@ -11,6 +11,7 @@ public sealed class PlayerNote
     public string Content { get; set; } = string.Empty;
     public int LikeCount { get; set; }
     public int DislikeCount { get; set; }
+    public bool IsToxic { get; set; }
     public string LastVoteMatchId { get; set; } = string.Empty;
     public string LastVote { get; set; } = string.Empty;
     public DateTimeOffset? UpdatedAt { get; set; }
@@ -22,7 +23,7 @@ public sealed class PlayerNote
     public string DisplayUpdatedAt =>
         UpdatedAt is { } updated ? updated.ToLocalTime().ToString("g") : "—";
     public bool HasSavedData =>
-        !string.IsNullOrWhiteSpace(Content) || LikeCount > 0 || DislikeCount > 0;
+        !string.IsNullOrWhiteSpace(Content) || LikeCount > 0 || DislikeCount > 0 || IsToxic;
 
     public bool HasVotedInMatch(string? matchId)
     {
@@ -97,6 +98,9 @@ internal sealed class PlayerNoteJsonConverter : JsonConverter<PlayerNote>
             Content = ReadString(root, "content", "Content"),
             LikeCount = ReadInt(root, "likeCount", "LikeCount"),
             DislikeCount = ReadInt(root, "dislikeCount", "DislikeCount"),
+            IsToxic = root.EnumerateObject().Any(property =>
+                property.Name.Equals("isToxic", StringComparison.OrdinalIgnoreCase)
+                && property.Value.ValueKind == JsonValueKind.True),
             LastVoteMatchId = ReadString(root, "lastVoteMatchId", "LastVoteMatchId"),
             LastVote = ReadString(root, "lastVote", "LastVote"),
             UpdatedAt = ReadTime(root, "updatedAt", "UpdatedAt"),
@@ -114,6 +118,7 @@ internal sealed class PlayerNoteJsonConverter : JsonConverter<PlayerNote>
         writer.WriteString(Name(nameof(PlayerNote.Content)), value.Content);
         writer.WriteNumber(Name(nameof(PlayerNote.LikeCount)), value.LikeCount);
         writer.WriteNumber(Name(nameof(PlayerNote.DislikeCount)), value.DislikeCount);
+        writer.WriteBoolean(Name(nameof(PlayerNote.IsToxic)), value.IsToxic);
         if (!string.IsNullOrWhiteSpace(value.LastVoteMatchId))
         {
             writer.WriteString(Name(nameof(PlayerNote.LastVoteMatchId)), value.LastVoteMatchId);

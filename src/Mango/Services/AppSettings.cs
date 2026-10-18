@@ -4,12 +4,20 @@ using Mango.Models;
 
 namespace Mango.Services;
 
+public enum AppTheme
+{
+    System,
+    Light,
+    Dark,
+}
+
 public sealed class AppSettings
 {
     public const int DefaultGsiPort = 40000;
     public const string SettingsFileName = "settings.json";
 
     public int GsiPort { get; set; } = DefaultGsiPort;
+    public AppTheme Theme { get; set; } = AppTheme.System;
     public string GsiToken { get; set; } = string.Empty;
     public bool ShowPlayerPanel { get; set; } = true;
     public bool ShowBountyTimer { get; set; } = true;
@@ -24,11 +32,16 @@ public sealed class AppSettings
     public bool IsTurboMode { get; set; }
     /// <summary>How many seconds before a rune spawns its countdown widget appears.</summary>
     public int RuneTimerLeadSeconds { get; set; } = 15;
-    public bool DebugOverlayPreview { get; set; }
+    // Keep the stored key so existing developer settings carry over.
+    [System.Text.Json.Serialization.JsonPropertyName("DebugOverlayPreview")]
+    public bool ShowMockData { get; set; }
     public string? SteamId { get; set; }
     /// <summary>Steam Web API key used for roster avatars (GetPlayerSummaries).</summary>
     public string SteamApiKey { get; set; } = string.Empty;
+    /// <summary>STRATZ API token used for replay-analysed player positions.</summary>
+    public string StratzApiToken { get; set; } = string.Empty;
     public Dictionary<string, PlayerNote> PlayerNotes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, PlayerRankOverride> PlayerRanks { get; set; } = new();
 
     public HotkeyBinding ToggleOverlayHotkey { get; set; } = HotkeyBinding.DefaultToggleOverlay();
     public HotkeyBinding ToggleInteractiveHotkey { get; set; } = HotkeyBinding.DefaultToggleInteractive();
@@ -77,10 +90,16 @@ public sealed class AppSettings
 
     public void Normalize()
     {
+        if (!Enum.IsDefined(Theme))
+        {
+            Theme = AppTheme.System;
+        }
+
         ToggleOverlayHotkey ??= HotkeyBinding.DefaultToggleOverlay();
         ToggleInteractiveHotkey ??= HotkeyBinding.DefaultToggleInteractive();
         PanelLayout ??= new PanelLayoutSettings();
         PlayerNotes = NormalizeNotes(PlayerNotes);
+        PlayerRanks = Mango.Services.PlayerRanks.Normalize(PlayerRanks);
 
         if (ToggleOverlayHotkey.VirtualKey == 0)
         {
@@ -94,6 +113,7 @@ public sealed class AppSettings
 
         RuneTimerLeadSeconds = Math.Clamp(RuneTimerLeadSeconds, 5, 120);
         SteamApiKey = SteamApiKey?.Trim() ?? string.Empty;
+        StratzApiToken = StratzApiToken?.Trim() ?? string.Empty;
     }
 
     private static Dictionary<string, PlayerNote> NormalizeNotes(Dictionary<string, PlayerNote>? notes)

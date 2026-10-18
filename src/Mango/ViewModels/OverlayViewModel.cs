@@ -48,19 +48,27 @@ public sealed partial class OverlayViewModel : ObservableObject
     {
         ApplySettings();
         _store.SnapshotUpdated += OnSnapshotUpdated;
+        OnSnapshotUpdated(_store.Snapshot);
     }
 
     private async void OnSnapshotUpdated(MatchSnapshot snapshot)
     {
         Snapshot = snapshot;
 
-        if (_settings.DebugOverlayPreview)
+        if (_store.IsUsingMockData)
         {
+            ++_buildRequestId;
             ApplyMockBuild();
             return;
         }
 
-        if (!string.IsNullOrWhiteSpace(snapshot.HeroName))
+        if (string.IsNullOrWhiteSpace(snapshot.HeroName))
+        {
+            ++_buildRequestId;
+            _buildHeroKey = null;
+            BuildSuggestions.Clear();
+        }
+        else
         {
             await RefreshBuildDataAsync(snapshot.HeroName);
         }

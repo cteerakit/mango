@@ -22,8 +22,7 @@
   </PropertyGroup>
 
   <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-    <Watch Include="**\*.xaml" />
-    <Watch Include="**\*.cs" />
+    <Watch Include="**\*.xaml" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder);bin\**;obj\**" />
   </ItemGroup>
 
   <ItemGroup>
@@ -92,6 +91,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Mango.Core\Mango.Core.csproj" />
+    <Content Include="..\..\scripts\Read-SteamRoster.ps1" Link="Read-SteamRoster.ps1" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <PropertyGroup>
     <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>

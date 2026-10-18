@@ -41,7 +41,7 @@
                 HorizontalAlignment="Center"
                 VerticalAlignment="Top">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Player" Style="{StaticResource TitleTextBlockStyle}" />
+                    <TextBlock x:Name="PageTitleText" AutomationProperties.AutomationId="ProfilePageTitle" Text="Player" Style="{StaticResource TitleTextBlockStyle}" />
                     <TextBlock
                         x:Name="SubtitleText"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -50,6 +50,7 @@
                 </StackPanel>
 
                 <Border
+                    x:Name="PickerCard"
                     Padding="20"
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -107,11 +108,11 @@
                             <TextBlock x:Name="NameText" Grid.Row="0" Grid.Column="1" Style="{StaticResource FactValueStyle}" />
                             <TextBlock Grid.Row="1" Style="{StaticResource FactLabelStyle}" Text="Steam ID" />
                             <TextBlock x:Name="SteamIdText" Grid.Row="1" Grid.Column="1" Style="{StaticResource FactValueStyle}" />
-                            <TextBlock Grid.Row="2" Style="{StaticResource FactLabelStyle}" Text="Note" />
+                            <TextBlock x:Name="NoteLabel" Grid.Row="2" Style="{StaticResource FactLabelStyle}" Text="Note" />
                             <TextBlock x:Name="NoteText" Grid.Row="2" Grid.Column="1" Style="{StaticResource FactValueStyle}" />
-                            <TextBlock Grid.Row="3" Style="{StaticResource FactLabelStyle}" Text="Likes" />
+                            <TextBlock x:Name="LikesLabel" Grid.Row="3" Style="{StaticResource FactLabelStyle}" Text="Likes" />
                             <TextBlock x:Name="LikesText" Grid.Row="3" Grid.Column="1" Style="{StaticResource FactValueStyle}" />
-                            <TextBlock Grid.Row="4" Style="{StaticResource FactLabelStyle}" Text="Dislikes" />
+                            <TextBlock x:Name="DislikesLabel" Grid.Row="4" Style="{StaticResource FactLabelStyle}" Text="Dislikes" />
                             <TextBlock x:Name="DislikesText" Grid.Row="4" Grid.Column="1" Style="{StaticResource FactValueStyle}" />
                         </Grid>
                     </StackPanel>
@@ -138,6 +139,7 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
 
                             <TextBlock Grid.Row="0" Style="{StaticResource FactLabelStyle}" Text="Rank" />
@@ -148,12 +150,14 @@
                             <TextBlock x:Name="LossesText" Grid.Row="2" Grid.Column="1" Style="{StaticResource FactValueStyle}" />
                             <TextBlock Grid.Row="3" Style="{StaticResource FactLabelStyle}" Text="Win rate" />
                             <TextBlock x:Name="WinRateText" Grid.Row="3" Grid.Column="1" Style="{StaticResource FactValueStyle}" />
-                            <TextBlock Grid.Row="4" Style="{StaticResource FactLabelStyle}" Text="Data source" />
+                            <TextBlock Grid.Row="4" Style="{StaticResource FactLabelStyle}" Text="Total matches" />
+                            <TextBlock x:Name="TotalMatchesText" Grid.Row="4" Grid.Column="1" Style="{StaticResource FactValueStyle}" ToolTipService.ToolTip="Matches recorded by OpenDota, including Turbo" />
+                            <TextBlock Grid.Row="5" Style="{StaticResource FactLabelStyle}" Text="Data source" />
                             <TextBlock
-                                Grid.Row="4"
+                                Grid.Row="5"
                                 Grid.Column="1"
                                 Style="{StaticResource FactValueStyle}"
-                                Text="OpenDota public match history" />
+                                Text="OpenDota public match history, including Turbo" />
                         </Grid>
                     </StackPanel>
                 </Border>

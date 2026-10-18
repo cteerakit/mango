@@ -125,6 +125,10 @@ public sealed class GsiListenerService : IDisposable
                 allPlayerCount = payload.AllPlayers?.Count ?? 0,
                 localSteamId = payload.Player?.Local?.SteamId,
                 localName = payload.Player?.Local?.Name,
+                resolvedPlayerCount = _store.Snapshot.MatchId == payload.Map?.MatchId ? _store.Snapshot.Players.Count : 0,
+                resolvedServerSteamId = _store.Snapshot.MatchId == payload.Map?.MatchId ? _store.Snapshot.ServerSteamId : null,
+                resolvedSource = _store.LastRosterSource,
+                normalizedPlayerCount = GsiNormalizer.Normalize(payload).Players.Count,
             });
             File.WriteAllText(Path.Combine(AppSettings.SettingsDirectory, "gsi-last-meta.json"), meta);
         }

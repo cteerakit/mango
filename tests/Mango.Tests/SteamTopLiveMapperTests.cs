@@ -7,6 +7,20 @@ namespace Mango.Tests;
 public class SteamTopLiveMapperTests
 {
     [Fact]
+    public void FindGame_RejectsSameAccountInDifferentKnownMatch()
+    {
+        var payload = new SteamTopLiveResponse
+        {
+            GameList = [new SteamTopLiveGame
+            {
+                MatchId = "111",
+                Players = [new SteamTopLivePlayer { AccountId = 42 }],
+            }],
+        };
+        Assert.Null(SteamTopLiveMapper.FindGame(payload, 42, "222"));
+    }
+
+    [Fact]
     public void FindGame_MatchesLocalAccountAndMapsTenPlayers()
     {
         const string json =
@@ -42,8 +56,7 @@ public class SteamTopLiveMapperTests
         Assert.Equal("90153324321222656", hit.ServerSteamId);
         Assert.Equal("8345123456", hit.MatchId);
         Assert.Equal(10, hit.Players.Count);
-        Assert.Equal("radiant", hit.Players[0].TeamName);
-        Assert.Equal("dire", hit.Players[5].TeamName);
+        Assert.All(hit.Players, static player => Assert.Equal(string.Empty, player.TeamName));
         Assert.Equal("npc_dota_hero_pudge", hit.Players[0].HeroName);
         Assert.Equal("1088417288", hit.Players[0].SteamId);
     }
