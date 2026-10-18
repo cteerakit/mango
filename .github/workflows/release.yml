@@ -34,6 +34,7 @@ jobs:
         shell: pwsh
         env:
           SIGNING_CERTIFICATE: ${{ secrets.MSIX_CERTIFICATE_BASE64 }}
+          SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.MSIX_CERTIFICATE_PASSWORD }}
         run: |
           $version = $env:GITHUB_REF_NAME -replace '^v', ''
           if ($version -notmatch '^\d+\.\d+\.\d+\.\d+$' -or
@@ -46,18 +47,18 @@ jobs:
           $manifest.Save((Join-Path $PWD 'src/Mango/Package.appxmanifest'))
           $certificatePath = Join-Path $env:RUNNER_TEMP 'mango-signing.pfx'
           [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:SIGNING_CERTIFICATE))
-          "PackageCertificateKeyFile=$certificatePath" >> $env:GITHUB_ENV
+          $password = ConvertTo-SecureString $env:SIGNING_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $certificate = Import-PfxCertificate -FilePath $certificatePath -Password $password -CertStoreLocation Cert:\CurrentUser\My
+          "PackageCertificateThumbprint=$($certificate.Thumbprint)" >> $env:GITHUB_ENV
       - name: Build signed self-contained MSIX
         shell: pwsh
-        env:
-          PackageCertificatePassword: ${{ secrets.MSIX_CERTIFICATE_PASSWORD }}
         run: |
           $platform = '${{ matrix.platform }}'
           dotnet publish src/Mango/Mango.csproj -c Release -p:Platform=$platform -r "win-$($platform.ToLowerInvariant())" `
             -p:GenerateAppxPackageOnBuild=true -p:AppxPackageSigningEnabled=true -p:AppxBundle=Never -p:AppxAutoIncrementPackageRevision=false `
             -p:AppxPackageDir="$env:RUNNER_TEMP/packages/" -p:UapAppxPackageBuildMode=SideloadOnly `
             -p:SelfContained=true -p:WindowsAppSDKSelfContained=true -p:PublishTrimmed=false `
-            -p:AppxPackageSigningTimestampServerUrl=http://timestamp.digicert.com
+            -p:AppxPackageSigningTimestampServerUrl=http://timestamp.digicert.com -p:AppxPackageSigningTimestampDigestAlgorithm=SHA256
           if ($LASTEXITCODE -ne 0) { throw 'MSIX publish failed.' }
       - name: Generate automatic update feed
         shell: pwsh
@@ -81,7 +82,11 @@ jobs:
       - name: Remove signing certificate
         if: always()
         shell: pwsh
-        run: Remove-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'mango-signing.pfx') -ErrorAction SilentlyContinue
+        run: |
+          Remove-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'mango-signing.pfx') -ErrorAction SilentlyContinue
+          if ($env:PackageCertificateThumbprint) {
+            Remove-Item -LiteralPath "Cert:\CurrentUser\My\$env:PackageCertificateThumbprint" -DeleteKey -ErrorAction SilentlyContinue
+          }
 
   release:
     needs: package
