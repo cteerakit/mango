@@ -1,6 +1,6 @@
 # Publishing automatic updates
 
-Mango uses Windows App Installer to download and install signed MSIX updates. Users install `Mango-x64.appinstaller`, `Mango-arm64.appinstaller`, or `Mango-x86.appinstaller` from a GitHub release once. Future releases use the same feed URL.
+Mango uses Windows App Installer to download and install signed MSIX updates. Users install `Mango-x64.appinstaller` from a GitHub release once. Future releases use the same feed URL. New releases support Windows x64 only.
 
 ## Configure signing
 
@@ -26,8 +26,8 @@ The workflow bundles .NET and the Windows App SDK, signs the packages, and reque
    git push origin v1.0.1.0
    ```
 
-3. Wait for the **Release Mango** workflow to pass its tests and build all three architectures. The workflow publishes one GitHub release with all MSIX packages and App Installer feeds.
-4. Direct new users to the `.appinstaller` asset for their architecture. Existing users enrolled in the feed receive the new version automatically.
+3. Wait for the **Release Mango** workflow to pass its tests and build the x64 installer. The workflow publishes one GitHub release with the MSIX package and App Installer feed.
+4. Direct new users to the `Mango-x64.appinstaller` asset. Existing x64 users enrolled in the feed receive the new version automatically.
 
 Every `v*` tag triggers a stable release. Do not use this workflow for prereleases or older versions: the workflow makes the release the latest one. Release publication fails if that release already exists. Resolve the publication failure before retrying; do not overwrite an MSIX that users have already installed.
 

@@ -11,10 +11,7 @@ This is a self-signed test release. Trust the public test certificate once on ea
 
    The certificate subject is `CN=AppPublisher`. Its thumbprint is `EF17E38930F9225A7F14BF52F9B487381B74BCB7`.
 
-3. Download and open the App Installer file for your PC:
-   - [Windows x64](https://github.com/cteerakit/mango/releases/latest/download/Mango-x64.appinstaller), for most Intel and AMD PCs.
-   - [Windows ARM64](https://github.com/cteerakit/mango/releases/latest/download/Mango-arm64.appinstaller), for Windows on ARM.
-   - [Windows x86](https://github.com/cteerakit/mango/releases/latest/download/Mango-x86.appinstaller), for 32-bit Windows.
+3. Download and open [Mango for Windows x64](https://github.com/cteerakit/mango/releases/latest/download/Mango-x64.appinstaller). New releases support Windows x64 only.
 
 If Windows does not recognize `.appinstaller` files, install Microsoft's App Installer from the Microsoft Store first.
 
