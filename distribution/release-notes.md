@@ -1,3 +1,10 @@
+## Changes in v1.0.4.0
+
+- Removed the Steam Web API key setting and keyed Steam requests.
+- Player avatars now load from OpenDota without a Steam API key.
+- Live roster discovery uses the local Steam helper and OpenDota.
+- Roster enrichment retries every second during strategy time.
+
 ## Install Mango
 
 Download **MangoSetup-x64.exe**, open it, and follow the setup wizard. Mango installs for your Windows user and adds a Start menu shortcut. No administrator access, PowerShell, or certificate import is required. Runtimes are included.

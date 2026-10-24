@@ -6,7 +6,7 @@ Windows desktop companion for Dota 2. Mango connects through Valve Game State In
 
 **Companion app**
 
-- **Match** — live Radiant/Dire roster with hero, rank, and match counts; OpenDota and Steam enrichment
+- **Match** — live Radiant/Dire roster with hero, rank, and match counts; OpenDota enrichment and local Steam roster discovery
 - **Player** — overall stats and recent matches for saved players
 - **Notes & votes** — per-player notes and like/dislike on the match scoreboard; import/export backups
 - **Status** — GSI connection health and Dota setup checklist
@@ -71,7 +71,7 @@ Stored in `%LOCALAPPDATA%\Mango\settings.json`:
 - Overlay panel visibility, opacity, and layout positions
 - Turbo mode timer rules
 - GSI auth token
-- Steam Web API key (Settings page)
+- Optional STRATZ API token (Settings page)
 
 Use **Save settings** in the shell after changing panel toggles or opacity on the Overlay page.
 
