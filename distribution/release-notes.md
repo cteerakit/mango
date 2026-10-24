@@ -1,7 +1,7 @@
-## Changes in v1.0.5.0
+## Changes in v1.0.6.0
 
-- **Settings > App updates** can now install updates for you. Select **Install update and restart**; Mango downloads the installer, verifies its SHA-256 checksum, installs it silently, and reopens. **Download installer manually** remains as a fallback.
-- If you are on v1.0.4.0 or earlier, install this version once by hand. After that, updates install from inside Mango.
+- **Live teams are back.** Mango uses Steam's live match data to place players on Radiant or Dire, and shows their heroes. Steam requires a free Web API key for this: paste it in **Settings > Steam Web API** (get one at steamcommunity.com/dev/apikey). Without a key, teams only appear for games in OpenDota's live list.
+- Player avatars still come from OpenDota and need no key.
 
 ## Install Mango
 
