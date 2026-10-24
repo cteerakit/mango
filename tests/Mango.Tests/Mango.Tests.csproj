@@ -22,6 +22,7 @@
     <Compile Include="..\..\src\Mango\Services\OpenDotaService.cs" Link="Services\OpenDotaService.cs" />
     <Compile Include="..\..\src\Mango\Services\OpenDotaService.MatchHistory.cs" Link="Services\OpenDotaService.MatchHistory.cs" />
     <Compile Include="..\..\src\Mango\Services\RankEstimator.cs" Link="Services\RankEstimator.cs" />
+    <Compile Include="..\..\src\Mango\Services\SteamWebApiService.cs" Link="Services\SteamWebApiService.cs" />
     <Compile Include="..\..\src\Mango\Services\StratzService.cs" Link="Services\StratzService.cs" />
   </ItemGroup>
 

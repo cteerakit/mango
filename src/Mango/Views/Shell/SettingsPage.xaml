@@ -98,6 +98,29 @@
                     BorderThickness="1"
                     CornerRadius="12">
                     <StackPanel Spacing="12">
+                        <TextBlock Text="Steam Web API" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Used to load live teams and heroes on the Match page. Get a key from steamcommunity.com/dev/apikey."
+                            TextWrapping="WrapWholeWords" />
+                        <PasswordBox
+                            x:Name="SteamApiKeyBox"
+                            PasswordChanged="OnSteamApiKeyChanged"
+                            PasswordRevealMode="Peek" />
+                        <TextBlock
+                            x:Name="SteamApiKeyStatus"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            TextWrapping="WrapWholeWords" />
+                    </StackPanel>
+                </Border>
+
+                <Border
+                    Padding="20"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12">
+                    <StackPanel Spacing="12">
                         <TextBlock Text="STRATZ API" Style="{StaticResource SubtitleTextBlockStyle}" />
                         <TextBlock
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"

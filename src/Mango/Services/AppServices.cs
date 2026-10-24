@@ -10,6 +10,7 @@ public static class AppServices
     public static GsiListenerService GsiListener { get; private set; } = null!;
     public static GsiConfigInstaller GsiInstaller { get; private set; } = new();
     public static OpenDotaService OpenDota { get; private set; } = new(Path.Combine(AppSettings.SettingsDirectory, "cache"));
+    public static SteamWebApiService SteamApi { get; private set; } = new();
     public static StratzService Stratz { get; private set; } = new(Path.Combine(AppSettings.SettingsDirectory, "cache"));
     public static TimerService TimerService { get; private set; } = null!;
     public static OverlayWindowService OverlayService { get; private set; } = null!;
@@ -20,6 +21,7 @@ public static class AppServices
     {
         Settings = AppSettings.Load();
         OpenDota = new OpenDotaService(Path.Combine(AppSettings.SettingsDirectory, "cache"));
+        SteamApi = new SteamWebApiService();
         Stratz = new StratzService(Path.Combine(AppSettings.SettingsDirectory, "cache"));
         _localSteamRoster = new LocalSteamRosterService(GsiConfigInstaller.FindDotaInstallPaths());
         MatchStore = new MatchStore();
@@ -75,7 +77,70 @@ public static class AppServices
             ResolveFromOpenDotaLiveAsync(snapshot.MatchId, localAccountId, cancellationToken),
         };
 
+        // Steam's live endpoints are the only source of teams for ordinary matches and require a key.
+        if (!string.IsNullOrWhiteSpace(Settings.SteamApiKey))
+        {
+            var heroNames = await GetHeroNamesAsync(cancellationToken);
+            sources.Add(ResolveFromTopLiveAsync(snapshot.MatchId, localAccountId, heroNames, cancellationToken));
+            if (!string.IsNullOrWhiteSpace(snapshot.ServerSteamId))
+            {
+                sources.Add(ResolveFromRealtimeAsync(snapshot.ServerSteamId, snapshot.MatchId, heroNames, cancellationToken));
+            }
+        }
+
         return await FirstRichRosterAsync(sources, cancellationToken);
+    }
+
+    private static async Task<IReadOnlyDictionary<int, string>> GetHeroNamesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var heroCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            heroCts.CancelAfter(TimeSpan.FromSeconds(2));
+            return (await OpenDota.GetHeroesAsync(heroCts.Token))
+                .GroupBy(static hero => hero.Id)
+                .ToDictionary(static group => group.Key, static group => group.First().Name);
+        }
+        catch
+        {
+            // Hero icons can stay empty; roster identities and teams still load.
+            return new Dictionary<int, string>();
+        }
+    }
+
+    private static async Task<MatchRosterResolution?> ResolveFromTopLiveAsync(
+        string matchId,
+        ulong? localAccountId,
+        IReadOnlyDictionary<int, string> heroNames,
+        CancellationToken cancellationToken)
+    {
+        var hit = await SteamApi.FindTopLiveGameAsync(
+            localAccountId,
+            matchId,
+            Settings.SteamApiKey,
+            heroNames,
+            cancellationToken);
+        if (hit is null)
+        {
+            return null;
+        }
+
+        return ToResolution(hit.Players, hit.ServerSteamId, "steam-top-live");
+    }
+
+    private static async Task<MatchRosterResolution?> ResolveFromRealtimeAsync(
+        string serverSteamId,
+        string matchId,
+        IReadOnlyDictionary<int, string> heroNames,
+        CancellationToken cancellationToken)
+    {
+        var players = await SteamApi.GetRealtimeRosterAsync(
+            serverSteamId,
+            Settings.SteamApiKey,
+            heroNames,
+            cancellationToken,
+            expectedMatchId: matchId);
+        return ToResolution(players, serverSteamId, "steam-realtime");
     }
 
     private static async Task<MatchRosterResolution?> ResolveFromOpenDotaLiveAsync(
