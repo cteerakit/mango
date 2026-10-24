@@ -9,7 +9,6 @@ namespace Mango.Views.Shell;
 public sealed partial class SettingsPage : Page
 {
     private bool _notesTransferBusy;
-    private bool _suppressSteamKeyChange;
     private bool _suppressStratzTokenChange;
     private readonly AppUpdateService _updates = new();
 
@@ -20,7 +19,6 @@ public sealed partial class SettingsPage : Page
         ThemeSelector.SelectedItem = ThemeSelector.Items.OfType<RadioButton>()
             .First(item => (string)item.Tag == AppServices.Settings.Theme.ToString());
         ThemeSelector.SelectionChanged += OnThemeSelectionChanged;
-        LoadSteamApiKey();
         LoadStratzApiToken();
         AppVersionText.Text = $"Version {_updates.Version}";
         AppUpdateStatus.Text = _updates.Status;
@@ -53,30 +51,6 @@ public sealed partial class SettingsPage : Page
             ((MainWindow)App.Window).ApplyTheme();
             AppServices.Settings.Save();
         }
-    }
-
-    private void LoadSteamApiKey()
-    {
-        _suppressSteamKeyChange = true;
-        SteamApiKeyBox.Password = AppServices.Settings.SteamApiKey;
-        _suppressSteamKeyChange = false;
-        SteamApiKeyStatus.Text = string.IsNullOrWhiteSpace(AppServices.Settings.SteamApiKey)
-            ? "No Steam API key saved."
-            : "Steam API key saved on this PC.";
-    }
-
-    private void OnSteamApiKeyChanged(object sender, RoutedEventArgs e)
-    {
-        if (_suppressSteamKeyChange)
-        {
-            return;
-        }
-
-        AppServices.Settings.SteamApiKey = SteamApiKeyBox.Password.Trim();
-        AppServices.Settings.Save();
-        SteamApiKeyStatus.Text = string.IsNullOrWhiteSpace(AppServices.Settings.SteamApiKey)
-            ? "Steam API key cleared."
-            : "Steam API key saved.";
     }
 
     private void LoadStratzApiToken()

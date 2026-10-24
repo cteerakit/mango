@@ -488,10 +488,6 @@ public sealed partial class MatchPage : Page
     {
         try
         {
-            var avatarsTask = AppServices.SteamApi.GetPlayerSummariesAsync(
-                steamIds,
-                AppServices.Settings.SteamApiKey,
-                cancellationToken);
             var overviewTasks = steamIds.Select(async steamId =>
             {
                 try
@@ -509,12 +505,7 @@ public sealed partial class MatchPage : Page
                 }
             });
 
-            var overviewsTask = Task.WhenAll(overviewTasks);
-            await Task.WhenAll(overviewsTask, avatarsTask);
-            var overviews = await overviewsTask;
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var avatars = await avatarsTask;
+            var overviews = await Task.WhenAll(overviewTasks);
             cancellationToken.ThrowIfCancellationRequested();
 
             var lobbyAverageTiers = RankEstimator.AverageRankTier(
@@ -525,7 +516,6 @@ public sealed partial class MatchPage : Page
 
             foreach (var (steamId, overview) in overviews)
             {
-                avatars.TryGetValue(steamId, out var summary);
                 var resolved = RankEstimator.Resolve(
                     overview?.RankTier,
                     overview?.LeaderboardRank,
@@ -536,7 +526,7 @@ public sealed partial class MatchPage : Page
 
                 _enrichmentBySteamId[steamId] = new PlayerMatchEnrichment
                 {
-                    AvatarUrl = summary?.AvatarUrl ?? string.Empty,
+                    AvatarUrl = overview?.AvatarUrl ?? string.Empty,
                     RankIconUrl = resolved.RankTier is > 0
                         ? AssetUrls.RankIcon(resolved.RankTier)
                         : string.Empty,

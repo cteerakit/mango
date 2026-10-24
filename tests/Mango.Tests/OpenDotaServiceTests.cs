@@ -34,6 +34,28 @@ public sealed class OpenDotaServiceTests : IDisposable
         Assert.Equal(48.9, overview.WinRatePercent);
     }
 
+    [Theory]
+    [InlineData("full.png", "medium.png", "small.png", "full.png")]
+    [InlineData(null, "medium.png", "small.png", "medium.png")]
+    [InlineData("", null, "small.png", "small.png")]
+    [InlineData(null, null, null, "")]
+    public async Task GetPlayerOverviewAsync_LoadsAvatarFromOpenDota(
+        string? full, string? medium, string? small, string expected)
+    {
+        var profile = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            profile = new { personaname = "Player", avatarfull = full, avatarmedium = medium, avatar = small },
+        });
+        using var client = new HttpClient(new PlayerHandler(profile: profile))
+        {
+            BaseAddress = new Uri("https://api.opendota.com/api/"),
+        };
+        var service = new OpenDotaService(_cacheDirectory, client);
+        var overview = await service.GetPlayerOverviewAsync("118993939");
+        Assert.Equal("Player", overview!.DisplayName);
+        Assert.Equal(expected, overview.AvatarUrl);
+    }
+
     [Fact]
     public async Task GetMatchRosterAsync_RejectsSameAccountInDifferentKnownMatch()
     {

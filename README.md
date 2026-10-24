@@ -80,7 +80,7 @@ Use **Save settings** in the shell after changing panel toggles or opacity on th
 | Issue | Fix |
 |-------|-----|
 | No live data | Confirm you're in a match (not main menu), GSI cfg exists, launch option set |
-| Match/player data empty | Requires internet for OpenDota cache; Steam API key optional for avatars |
+| Match/player data empty | Requires internet for OpenDota data and avatars; no Steam API key needed |
 | Overlay not visible | Use borderless windowed; exclusive fullscreen hides external overlays |
 | Firewall prompt | Allow localhost connections for the app |
 

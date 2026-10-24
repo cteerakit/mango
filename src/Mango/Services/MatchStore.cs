@@ -152,17 +152,20 @@ public sealed partial class MatchStore : ObservableObject
             return;
         }
 
-        var fetchKey = $"{snapshot.MatchId}|{snapshot.ServerSteamId}|{localAccountId}";
+        var strategyTime = snapshot.GameState == "DOTA_GAMERULES_STATE_STRATEGY_TIME";
+        var fetchKey = $"{snapshot.MatchId}|{snapshot.ServerSteamId}|{localAccountId}|{strategyTime}";
         var now = DateTimeOffset.UtcNow;
         if (string.Equals(fetchKey, _rosterFetchInFlightKey, StringComparison.Ordinal))
         {
             return;
         }
 
-        // Steam's realtime stats gain teams shortly before the horn; poll faster until they arrive.
+        // Retry throughout strategy time while Steam is still filling in the teams.
         var awaitingTeams = !string.IsNullOrWhiteSpace(snapshot.ServerSteamId)
             && MatchRosterMerger.CountTeamed(snapshot.Players) < 10;
-        var retryInterval = _lastRosterFetchFailed || awaitingTeams
+        var retryInterval = strategyTime && MatchRosterMerger.CountTeamed(snapshot.Players) < 10
+            ? TimeSpan.FromSeconds(1)
+            : _lastRosterFetchFailed || awaitingTeams
             ? FailedRosterFetchInterval
             : MinRosterFetchInterval;
         if (string.Equals(fetchKey, _lastRosterFetchKey, StringComparison.Ordinal)

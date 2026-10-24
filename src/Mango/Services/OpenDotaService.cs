@@ -321,6 +321,8 @@ public sealed partial class OpenDotaService
         {
             SteamId = steamId.Trim(),
             DisplayName = FirstNonEmpty(profile?.Profile?.PersonaName, steamId),
+            AvatarUrl = new[] { profile?.Profile?.AvatarFull, profile?.Profile?.AvatarMedium, profile?.Profile?.Avatar }
+                .FirstOrDefault(static url => !string.IsNullOrWhiteSpace(url))?.Trim() ?? string.Empty,
             RankTier = profile?.RankTier,
             LeaderboardRank = profile?.LeaderboardRank,
             MmrEstimate = mmrEstimate,
@@ -657,6 +659,15 @@ public sealed class OpenDotaMmrEstimate
 
 public sealed class OpenDotaPlayerProfileDetails
 {
+    [JsonPropertyName("avatarfull")]
+    public string? AvatarFull { get; set; }
+
+    [JsonPropertyName("avatarmedium")]
+    public string? AvatarMedium { get; set; }
+
+    [JsonPropertyName("avatar")]
+    public string? Avatar { get; set; }
+
     [JsonPropertyName("personaname")]
     public string PersonaName { get; set; } = string.Empty;
 
@@ -760,6 +771,7 @@ public sealed class OpenDotaMatchPlayer
 
 public sealed class PlayerOverview
 {
+    public string AvatarUrl { get; set; } = string.Empty;
     public string SteamId { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
     public int? RankTier { get; set; }

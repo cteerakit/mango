@@ -36,8 +36,6 @@ public sealed class AppSettings
     [System.Text.Json.Serialization.JsonPropertyName("DebugOverlayPreview")]
     public bool ShowMockData { get; set; }
     public string? SteamId { get; set; }
-    /// <summary>Steam Web API key used for roster avatars (GetPlayerSummaries).</summary>
-    public string SteamApiKey { get; set; } = string.Empty;
     /// <summary>STRATZ API token used for replay-analysed player positions.</summary>
     public string StratzApiToken { get; set; } = string.Empty;
     public Dictionary<string, PlayerNote> PlayerNotes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -113,7 +111,6 @@ public sealed class AppSettings
         }
 
         RuneTimerLeadSeconds = Math.Clamp(RuneTimerLeadSeconds, 5, 120);
-        SteamApiKey = SteamApiKey?.Trim() ?? string.Empty;
         StratzApiToken = StratzApiToken?.Trim() ?? string.Empty;
     }
 
