@@ -47,6 +47,14 @@ Name: "{autodesktop}\Mango"; Filename: "{app}\Mango.exe"; WorkingDir: "{app}"; T
 
 [Run]
 Filename: "{app}\Mango.exe"; Description: "Launch Mango"; Flags: nowait postinstall skipifsilent
+; In-app updates run silently with /RELAUNCH=1 and need Mango started again afterwards.
+Filename: "{app}\Mango.exe"; Flags: nowait; Check: RelaunchAfterUpdate
+
+[Code]
+function RelaunchAfterUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;
 
 [UninstallDelete]
 Type: files; Name: "{app}\Assets\Fonts\radiance-regular.otf"

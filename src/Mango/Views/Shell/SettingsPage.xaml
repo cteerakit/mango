@@ -71,10 +71,22 @@
                             AutomationProperties.AutomationId="CheckForUpdatesButton"
                             Content="Check for updates"
                             Click="OnCheckForUpdatesClick" />
+                        <Button
+                            x:Name="InstallUpdateButton"
+                            AutomationProperties.AutomationId="InstallUpdateButton"
+                            Content="Install update and restart"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Visibility="Collapsed"
+                            Click="OnInstallUpdateClick" />
+                        <ProgressBar
+                            x:Name="UpdateProgress"
+                            AutomationProperties.AutomationId="UpdateProgress"
+                            Maximum="1"
+                            Visibility="Collapsed" />
                         <HyperlinkButton
                             x:Name="DownloadUpdateLink"
                             AutomationProperties.AutomationId="DownloadUpdateLink"
-                            Content="Download update"
+                            Content="Download installer manually"
                             Visibility="Collapsed" />
                     </StackPanel>
                 </Border>

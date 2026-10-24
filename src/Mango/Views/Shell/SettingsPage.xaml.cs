@@ -11,6 +11,7 @@ public sealed partial class SettingsPage : Page
     private bool _notesTransferBusy;
     private bool _suppressStratzTokenChange;
     private readonly AppUpdateService _updates = new();
+    private AppUpdateResult? _availableUpdate;
 
     public SettingsPage()
     {
@@ -29,15 +30,58 @@ public sealed partial class SettingsPage : Page
         CheckForUpdatesButton.IsEnabled = false;
         AppUpdateStatus.Text = "Checking for updates…";
         DownloadUpdateLink.Visibility = Visibility.Collapsed;
+        InstallUpdateButton.Visibility = Visibility.Collapsed;
         try
         {
-            var result = await _updates.CheckForUpdatesAsync();
-            AppUpdateStatus.Text = result.Status;
-            DownloadUpdateLink.NavigateUri = result.DownloadUri;
-            DownloadUpdateLink.Visibility = result.DownloadUri is null ? Visibility.Collapsed : Visibility.Visible;
+            _availableUpdate = await _updates.CheckForUpdatesAsync();
+            AppUpdateStatus.Text = _availableUpdate.Status;
+            DownloadUpdateLink.NavigateUri = _availableUpdate.DownloadUri;
+            var available = _availableUpdate.DownloadUri is not null;
+            DownloadUpdateLink.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
+            InstallUpdateButton.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
         }
         finally
         {
+            CheckForUpdatesButton.IsEnabled = true;
+        }
+    }
+
+    private async void OnInstallUpdateClick(object sender, RoutedEventArgs e)
+    {
+        if (_availableUpdate is not { DownloadUri: not null } update)
+        {
+            return;
+        }
+
+        CheckForUpdatesButton.IsEnabled = false;
+        InstallUpdateButton.IsEnabled = false;
+        UpdateProgress.Value = 0;
+        UpdateProgress.Visibility = Visibility.Visible;
+        AppUpdateStatus.Text = "Downloading update…";
+        try
+        {
+            var download = await _updates.DownloadInstallerAsync(
+                update, new Progress<double>(value => UpdateProgress.Value = value));
+            if (download.InstallerPath is { } installer)
+            {
+                AppUpdateStatus.Text = "Installing update. Mango will close and reopen.";
+                if (AppUpdateService.TryStartInstaller(installer))
+                {
+                    Application.Current.Exit();
+                    return;
+                }
+
+                AppUpdateStatus.Text = "Could not start the installer. Use Download installer manually instead.";
+            }
+            else
+            {
+                AppUpdateStatus.Text = download.Status;
+            }
+        }
+        finally
+        {
+            UpdateProgress.Visibility = Visibility.Collapsed;
+            InstallUpdateButton.IsEnabled = true;
             CheckForUpdatesButton.IsEnabled = true;
         }
     }

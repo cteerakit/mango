@@ -1,9 +1,7 @@
-## Changes in v1.0.4.0
+## Changes in v1.0.5.0
 
-- Removed the Steam Web API key setting and keyed Steam requests.
-- Player avatars now load from OpenDota without a Steam API key.
-- Live roster discovery uses the local Steam helper and OpenDota.
-- Roster enrichment retries every second during strategy time.
+- **Settings > App updates** can now install updates for you. Select **Install update and restart**; Mango downloads the installer, verifies its SHA-256 checksum, installs it silently, and reopens. **Download installer manually** remains as a fallback.
+- If you are on v1.0.4.0 or earlier, install this version once by hand. After that, updates install from inside Mango.
 
 ## Install Mango
 
@@ -13,7 +11,7 @@ This installer is unsigned. Windows may show an unknown-publisher or SmartScreen
 
 ## Updates
 
-Open **Settings > App updates > Check for updates**. When an update is available, select **Download update** and run the downloaded installer. Your settings and player notes are kept.
+Open **Settings > App updates > Check for updates**. When an update is available, select **Install update and restart**. Mango downloads and verifies the installer, installs it, and reopens. Your settings and player notes are kept.
 
 ## Existing MSIX users
 

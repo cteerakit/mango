@@ -26,9 +26,17 @@ Every `v*` tag publishes a stable release as latest. Do not use this workflow fo
 
 ## Update behavior
 
-In **Settings > App updates**, select **Check for updates**. Mango compares its installed version with the latest stable GitHub release. When a newer x64 installer is available, **Download update** opens its GitHub download in the default browser. Run the downloaded installer to update the existing installation.
+In **Settings > App updates**, select **Check for updates**. Mango compares its installed version with the latest stable GitHub release. When a newer x64 installer is available, select **Install update and restart**. Mango then:
 
-Updates require this user action. Mango does not silently download or execute installers. Offline checks and GitHub rate limits show a retry message.
+1. Downloads `MangoSetup-x64.exe` to a new temporary folder.
+2. Verifies its SHA-256 hash against the release's `SHA256SUMS.txt`. A mismatch deletes the file and nothing runs.
+3. Starts the installer with `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /RELAUNCH=1` and exits. The installer replaces the files and starts Mango again. `/RELAUNCH=1` is what triggers the relaunch; a plain silent install, such as the one in `Test-Installer.ps1`, does not start Mango.
+
+**Download installer manually** still opens the GitHub download in the default browser as a fallback. The installer log is `install.log` in the temporary folder.
+
+Updates start only when the user selects **Install update and restart**. Mango never checks for or installs updates in the background. A release must include both `MangoSetup-x64.exe` and `SHA256SUMS.txt`, or Mango reports that the installer is not available yet. Offline checks and GitHub rate limits show a retry message.
+
+The checksum comes from the same release as the installer, so it detects corruption but not a compromised release. Code signing would be needed for that.
 
 ## Move from the old MSIX release
 

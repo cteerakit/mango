@@ -88,7 +88,7 @@ Use **Save settings** in the shell after changing panel toggles or opacity on th
 
 Download `MangoSetup-x64.exe` from the [latest GitHub release](https://github.com/cteerakit/mango/releases/latest). Run it to install Mango for your Windows user. It includes the runtimes and adds a Start menu shortcut. No administrator access, PowerShell, or certificate import is required. The unsigned installer may show a Windows security warning, and some security policies block unsigned apps.
 
-In **Settings > App updates**, select **Check for updates**, then **Download update** when a newer installer is available. Run the downloaded installer to update. Settings and notes are kept.
+In **Settings > App updates**, select **Check for updates**, then **Install update and restart** when a newer version is available. Mango downloads and verifies the installer, installs it, and reopens. Settings and notes are kept. **Download installer manually** is available as a fallback.
 
 Existing MSIX users should install the EXE version and confirm their settings and notes before removing the old app. See [Publishing Mango installers](docs/automatic-updates.md) for migration details and release setup.
 
