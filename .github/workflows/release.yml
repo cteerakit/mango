@@ -10,22 +10,36 @@ permissions:
 jobs:
   test:
     runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
         with:
-          dotnet-version: '10.0.x'
-      - run: dotnet test tests/Mango.Tests/Mango.Tests.csproj -c Release
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      # The app crate embeds the built UI, so build it before the Rust tests.
+      - run: npx vite build
+      - run: cargo test --workspace --locked
 
   package:
     needs: test
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
         with:
-          dotnet-version: '10.0.x'
-      - name: Build self-contained x64 setup installer
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Build x64 setup installer
         shell: pwsh
         run: ./scripts/Build-Installer.ps1 -Version ($env:GITHUB_REF_NAME -replace '^v', '') -OutputDirectory "$env:RUNNER_TEMP/release"
       - name: Verify installation and startup

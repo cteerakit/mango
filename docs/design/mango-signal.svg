@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <title>Signal</title>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="#0C333F"/>
+  <path d="M96 90c22-17 54-21 73-6 22 17 24 46 9 72-16 27-45 47-77 45-26-1-43-18-43-39 0-24 14-53 38-72Z" fill="#F9C75B"/>
+  <path d="M140 65c7-15 24-21 46-19-8 18-26 24-46 19Z" fill="#6DE0C2"/>
+  <path d="M39 142h52l13-19 19 39 13-20h81" fill="none" stroke="#0C333F" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M39 142h18m129 0h31" fill="none" stroke="#6DE0C2" stroke-width="7" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <title>Sprout</title>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="#F7ECE0"/>
+  <path d="M113 84c-20-7-40-6-54 8-20 21-13 67 12 94 20 22 50 27 81 13 31-14 56-50 55-80-1-24-18-39-41-39-19 0-34 12-53 4Z" fill="#E97B49"/>
+  <path d="M121 82c-5-23-22-35-47-32 5 22 22 33 47 32ZM127 81c6-28 26-41 53-36-7 25-25 38-53 36Z" fill="#315E4B"/>
+  <path d="M73 125c0-13 7-23 17-27" fill="none" stroke="#FFC79F" stroke-width="8" stroke-linecap="round"/>
+</svg>

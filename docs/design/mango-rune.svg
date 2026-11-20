@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <title>Rune</title>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="#382044"/>
+  <path d="M128 33 220 128 128 223 36 128Z" fill="#572F5C" stroke="#A9688E" stroke-width="5"/>
+  <path d="M144 79c24 0 46 9 43 36-3 33-40 68-75 68-23 0-40-12-40-29 0-27 37-75 72-75Z" fill="#FF9259"/>
+  <path d="m144 79-23 47-49 28c0-27 37-75 72-75Z" fill="#FFD082"/>
+  <path d="m121 126-9 57c33 0 72-35 75-68Z" fill="#EA5E67"/>
+  <path d="m121 126 66-11c3-27-19-36-43-36Z" fill="#FFAA69"/>
+</svg>
