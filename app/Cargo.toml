@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = ["crates/mango-core"]
+
+[workspace.package]
+edition = "2021"
+license-file = "../LICENSE"
+
+[workspace.dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
+indexmap = { version = "2", features = ["serde"] }
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
