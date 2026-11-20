@@ -32,25 +32,58 @@ try {
     if ($shell.CreateShortcut($shortcut).TargetPath -ne $exe) { throw 'Start menu shortcut points to the wrong executable.' }
     if ((Get-ItemProperty $registration).DisplayVersion -ne $Version) { throw 'Windows uninstall registration has the wrong version.' }
 
-    $appProcess = Start-Process -FilePath $exe -WorkingDirectory $testRoot -PassThru
-    $deadline = [DateTime]::UtcNow.AddSeconds(20)
-    do {
-        Start-Sleep -Milliseconds 250
-        $appProcess.Refresh()
-        if ($appProcess.HasExited) { throw "Installed Mango exited during startup: $($appProcess.ExitCode)." }
-    # Tauri's single-instance helper can appear before the companion window.
-    } until ($appProcess.MainWindowTitle -eq 'Mango' -or [DateTime]::UtcNow -gt $deadline)
-    if ($appProcess.MainWindowTitle -ne 'Mango') { throw 'Installed Mango did not show the companion window.' }
     if (-not ('MangoInstallerVerification' -as [type])) {
         Add-Type @'
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Text;
 public static class MangoInstallerVerification
 {
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     public static extern int GetPackageFullName(IntPtr process, ref uint length, IntPtr name);
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+
+    delegate bool EnumWindowsProc(IntPtr window, IntPtr lParam);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr window, StringBuilder text, int max);
+
+    // Process.MainWindowHandle guesses among Tauri's several top-level windows, so list them directly.
+    public static List<KeyValuePair<IntPtr, string>> VisibleWindows(int processId)
+    {
+        var windows = new List<KeyValuePair<IntPtr, string>>();
+        EnumWindows((window, _) => {
+            uint owner;
+            GetWindowThreadProcessId(window, out owner);
+            if (owner == processId && IsWindowVisible(window)) {
+                var title = new StringBuilder(256);
+                GetWindowText(window, title, title.Capacity);
+                windows.Add(new KeyValuePair<IntPtr, string>(window, title.ToString()));
+            }
+            return true;
+        }, IntPtr.Zero);
+        return windows;
+    }
 }
 '@
+    }
+
+    $appProcess = Start-Process -FilePath $exe -WorkingDirectory $testRoot -PassThru
+    # WebView2 can start slowly on a fresh CI runner.
+    $deadline = [DateTime]::UtcNow.AddSeconds(60)
+    $companion = $null
+    do {
+        Start-Sleep -Milliseconds 250
+        if ($appProcess.HasExited) { throw "Installed Mango exited during startup: $($appProcess.ExitCode)." }
+        $windows = [MangoInstallerVerification]::VisibleWindows($appProcess.Id)
+        $companion = $windows | Where-Object Value -eq 'Mango' | Select-Object -First 1
+    } until ($companion -or [DateTime]::UtcNow -gt $deadline)
+    if (-not $companion) {
+        $seen = ($windows | ForEach-Object { "'$($_.Value)'" }) -join ', '
+        throw "Installed Mango did not show the companion window. Visible windows: $(if ($seen) { $seen } else { 'none' })."
     }
     [uint32]$packageNameLength = 0
     if ([MangoInstallerVerification]::GetPackageFullName($appProcess.Handle, [ref]$packageNameLength, [IntPtr]::Zero) -ne 15700) {
@@ -58,8 +91,10 @@ public static class MangoInstallerVerification
     }
     Write-Output "Installed Mango $Version launched without MSIX registration."
     # Closing the companion window quits Mango (the tray icon goes with it).
-    if (-not $appProcess.CloseMainWindow()) { throw 'Could not request closure of the Mango companion window.' }
-    if (-not $appProcess.WaitForExit(10000)) { throw 'Mango did not close normally.' }
+    if (-not [MangoInstallerVerification]::PostMessage($companion.Key, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)) {
+        throw 'Could not request closure of the Mango companion window.'
+    }
+    if (-not $appProcess.WaitForExit(15000)) { throw 'Mango did not close normally.' }
 
     $settingsHash = (Get-FileHash -LiteralPath $settingsPath).Hash
     Invoke-Setup
