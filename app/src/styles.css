@@ -115,9 +115,66 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+@property --scrollbar-visibility {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 0%;
+}
+
 * {
+  --scrollbar-visibility: 0%;
   scrollbar-width: thin;
-  scrollbar-color: var(--surface-3) transparent;
+  scrollbar-color: color-mix(in srgb, var(--faint) var(--scrollbar-visibility), transparent) transparent;
+}
+
+:where(html, .overflow-auto, .overflow-x-auto, .overflow-y-auto, .overflow-scroll, .overflow-x-scroll, .overflow-y-scroll) {
+  transition: --scrollbar-visibility 180ms ease;
+}
+
+[data-scrolling] {
+  --scrollbar-visibility: 100%;
+}
+
+@media (hover: hover) {
+  :where(.overflow-auto, .overflow-x-auto, .overflow-y-auto, .overflow-scroll, .overflow-x-scroll, .overflow-y-scroll):not([data-page-scroll]):hover {
+    --scrollbar-visibility: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(html, .overflow-auto, .overflow-x-auto, .overflow-y-auto, .overflow-scroll, .overflow-x-scroll, .overflow-y-scroll) {
+    transition-duration: 0s;
+  }
+}
+
+@supports selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-button {
+    display: none;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--faint) var(--scrollbar-visibility), transparent);
+  }
+
+  ::-webkit-scrollbar-thumb:active {
+    background: var(--faint);
+  }
+
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
 }
 
 ::selection {

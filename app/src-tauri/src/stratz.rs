@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use mango_core::history::MatchAnalysisOutcome;
 use serde_json::{json, Value};
 
 use crate::http::{Request, SharedHttp};
@@ -13,6 +14,7 @@ use crate::opendota::ReplaySource;
 
 pub const GRAPHQL_URL: &str = "https://api.stratz.com/graphql";
 const POSITIONS_QUERY: &str = "query($id: Long!){ match(id: $id){ players { steamAccountId position } } }";
+const OUTCOME_QUERY: &str = "query($id: Long!){ match(id: $id){ analysisOutcome } }";
 const PURCHASES_QUERY: &str =
     "query($id: Long!){ match(id: $id){ players { steamAccountId stats { itemPurchases { itemId time } } } } }";
 
@@ -61,6 +63,27 @@ impl Stratz {
         }
         let _ = std::fs::write(&cache, serde_json::to_string(&purchases).ok()?);
         Some(purchases)
+    }
+
+    async fn match_analysis_outcome(&self, match_id: i64, token: &str) -> Option<MatchAnalysisOutcome> {
+        if match_id <= 0 || token.trim().is_empty() {
+            return None;
+        }
+        let cache = self.cache_dir.join(format!("stratz_match_{match_id}_outcome.json"));
+        if let Some(outcome) = read_cache(&cache) {
+            return Some(outcome);
+        }
+        let root = self.query(OUTCOME_QUERY, match_id, token).await?;
+        let outcome = match root.pointer("/data/match/analysisOutcome")?.as_str()? {
+            "STOMPED" => MatchAnalysisOutcome::Stomp,
+            "COMEBACK" => MatchAnalysisOutcome::Comeback,
+            "CLOSE_GAME" => MatchAnalysisOutcome::CloseGame,
+            _ => return None,
+        };
+        if let Ok(json) = serde_json::to_string(&outcome) {
+            let _ = std::fs::write(cache, json);
+        }
+        Some(outcome)
     }
 
     async fn query(&self, query: &str, match_id: i64, token: &str) -> Option<Value> {
@@ -124,6 +147,10 @@ pub struct StratzReplay {
 
 #[async_trait]
 impl ReplaySource for StratzReplay {
+    async fn analysis_outcome(&self, match_id: i64) -> Option<MatchAnalysisOutcome> {
+        self.stratz.match_analysis_outcome(match_id, &self.token).await
+    }
+
     async fn positions(&self, match_id: i64) -> Result<Option<HashMap<i64, i32>>, String> {
         Ok(self.stratz.match_positions(match_id, &self.token).await)
     }
@@ -198,6 +225,24 @@ mod tests {
             assert!(stratz.match_positions(1, "token").await.is_none());
             assert!(stratz.match_positions(1, "token").await.is_none());
             assert_eq!(http.count(), 2);
+        }
+    }
+
+    #[tokio::test]
+    async fn match_outcome_maps_stratz_classifications_and_caches_classified_matches() {
+        for (value, expected) in [
+            ("STOMPED", Some(MatchAnalysisOutcome::Stomp)),
+            ("COMEBACK", Some(MatchAnalysisOutcome::Comeback)),
+            ("CLOSE_GAME", Some(MatchAnalysisOutcome::CloseGame)),
+            ("NONE", None),
+        ] {
+            let http = FakeHttp::new(move |_| {
+                Some((200, json!({"data": {"match": {"analysisOutcome": value}}}).to_string()))
+            });
+            let (stratz, _dir) = service(http.clone());
+            assert_eq!(stratz.match_analysis_outcome(90, "token").await, expected);
+            assert_eq!(stratz.match_analysis_outcome(90, "token").await, expected);
+            assert_eq!(http.count(), if expected.is_some() { 1 } else { 2 });
         }
     }
 

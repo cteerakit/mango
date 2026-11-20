@@ -212,6 +212,7 @@ pub struct MatchPlayer {
     pub rank_is_estimated: bool,
     pub reported_rank_tier: Option<i32>,
     pub matches_label: String,
+    pub possible_smurf: bool,
     pub is_profile_private: bool,
     pub is_local_player: bool,
     pub history: PlayerMatchHistory,

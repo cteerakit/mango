@@ -50,6 +50,7 @@ struct Enrichment {
     rank_label: String,
     rank_is_estimated: bool,
     matches_label: String,
+    possible_smurf: bool,
     is_profile_private: bool,
     reported_rank_tier: Option<i32>,
 }
@@ -182,6 +183,7 @@ impl MatchView {
                                     }
                                 }
                             },
+                            possible_smurf: overview.as_ref().is_some_and(|o| o.possible_smurf),
                             is_profile_private: private,
                             reported_rank_tier: overview.as_ref().and_then(|o| o.rank_tier),
                         },
@@ -244,13 +246,14 @@ pub async fn load_history(
 ) -> HashMap<String, PlayerMatchHistory> {
     stream::iter(requests)
         .map(|(key, steam, hero)| async move {
-            let ((recent, recent_label), encounter, build) = tokio::join!(
-                opendota.recent_match_summaries(&steam, match_id),
-                opendota.encounter_label(local_steam_id, &steam, match_id),
+            let ((recent, recent_label), (recent_encounters, encounter_label), build) = tokio::join!(
+                opendota.recent_match_summaries(&steam, match_id, replay),
+                opendota.encounters(local_steam_id, &steam, match_id),
                 opendota.latest_hero_build(&steam, &hero, match_id, replay),
             );
             let history = PlayerMatchHistory {
-                encounter_label: encounter,
+                encounter_label,
+                recent_encounters,
                 recent_matches: recent,
                 recent_matches_label: recent_label,
                 ..build
@@ -315,6 +318,7 @@ fn build_view(
             player.rank_label = e.rank_label;
             player.rank_is_estimated = e.rank_is_estimated;
             player.matches_label = e.matches_label;
+            player.possible_smurf = e.possible_smurf;
             player.is_profile_private = e.is_profile_private;
             player.reported_rank_tier = e.reported_rank_tier;
 
@@ -486,6 +490,21 @@ mod tests {
         assert!(view.is_mock);
         assert_eq!(view.players[1].player.matches_label, "2,964 (50.1%)");
         assert!(!view.players[1].player.history.items.is_empty());
+        let encounters = &view.players[1].player.history.recent_encounters;
+        assert_eq!(encounters.len(), 5);
+        assert_eq!(encounters[0].side, mango_core::history::EncounterSide::With);
+        assert_eq!(encounters[1].side, mango_core::history::EncounterSide::Against);
+        assert_eq!(encounters[0].summary.result, "Win");
+        assert_eq!(encounters[1].summary.result, "Loss");
+        assert_ne!(encounters[0].summary.hero_image_url, encounters[1].summary.hero_image_url);
+        let smurf = view.players.iter().find(|row| row.player.possible_smurf).unwrap();
+        assert_eq!(smurf.player.matches_label, "180 (70%)");
+        assert!(!smurf.player.steam_id.is_empty());
+        let profile = mock::player_overview(&smurf.player.steam_id);
+        assert!(profile.possible_smurf);
+        assert_eq!(profile.display_name, smurf.player.name);
+        assert_eq!(profile.wins + profile.losses, 180);
+        assert_eq!(profile.win_rate_percent, Some(70.0));
     }
 
     #[test]

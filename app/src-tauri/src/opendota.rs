@@ -10,7 +10,8 @@ use std::time::{Duration, SystemTime};
 
 use async_trait::async_trait;
 use chrono::{Local, TimeZone, Utc};
-use mango_core::history::{format_position_label, MatchBuildItem, PlayerMatchHistory, RecentMatchSummary};
+use futures::{stream, StreamExt};
+use mango_core::history::{format_position_label, EncounterSide, MatchAnalysisOutcome, MatchBuildItem, PlayerMatchHistory, RecentEncounter, RecentMatchSummary};
 use mango_core::json::{as_i32, as_i64, as_u64};
 use mango_core::match_build::{self, ItemConstant};
 use mango_core::model::{hero_icon_key, MatchPlayer};
@@ -53,8 +54,14 @@ pub struct PlayerOverview {
     pub wins: i64,
     pub losses: i64,
     pub win_rate_percent: Option<f64>,
+    pub possible_smurf: bool,
     pub is_private: bool,
     pub recent_matches: Vec<PlayerMatchRow>,
+}
+
+pub(crate) fn possible_smurf(wins: i64, losses: i64) -> bool {
+    let Some(total) = wins.checked_add(losses) else { return false };
+    wins >= 0 && losses >= 0 && (50..=500).contains(&total) && wins * 100 >= total * 65
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -62,7 +69,9 @@ pub struct PlayerOverview {
 pub struct PlayerMatchRow {
     pub match_id: String,
     pub hero_name: String,
+    pub hero_image_url: String,
     pub result: String,
+    pub analysis_outcome: Option<MatchAnalysisOutcome>,
     pub kda: String,
     pub duration: String,
     pub played_at: String,
@@ -73,8 +82,23 @@ pub struct PlayerMatchRow {
 pub trait ReplaySource: Send + Sync {
     /// Position 1–5 by account id.
     async fn positions(&self, match_id: i64) -> Result<Option<HashMap<i64, i32>>, String>;
+    async fn analysis_outcome(&self, match_id: i64) -> Option<MatchAnalysisOutcome>;
     /// `(item_id, seconds)` in time order.
     async fn purchases(&self, match_id: i64, account_id: i64) -> Result<Option<Vec<(i32, i32)>>, String>;
+}
+
+pub async fn load_analysis_outcomes(
+    replay: Option<&dyn ReplaySource>,
+    match_ids: impl Iterator<Item = i64>,
+) -> HashMap<i64, MatchAnalysisOutcome> {
+    let Some(replay) = replay else { return HashMap::new() };
+    let ids: std::collections::HashSet<_> = match_ids.filter(|id| *id > 0).collect();
+    stream::iter(ids)
+        .map(|id| async move { replay.analysis_outcome(id).await.map(|outcome| (id, outcome)) })
+        .buffer_unordered(3)
+        .filter_map(std::future::ready)
+        .collect()
+        .await
 }
 
 pub struct OpenDota {
@@ -195,14 +219,6 @@ impl OpenDota {
         map
     }
 
-    async fn hero_localized_names(&self) -> HashMap<i32, String> {
-        let mut map = HashMap::new();
-        for hero in self.heroes().await.map(|h| h.to_vec()).unwrap_or_default() {
-            map.entry(hero.id).or_insert(hero.localized_name);
-        }
-        map
-    }
-
     /// `pudge` or `Pudge` → 14.
     pub fn resolve_hero_id(hero_name: &str, heroes: &[Hero]) -> Option<i32> {
         if is_blank(hero_name) {
@@ -261,8 +277,8 @@ impl OpenDota {
 
     pub async fn player_overview(&self, steam_id_text: &str) -> Option<PlayerOverview> {
         let account = steam_id::to_account_id(steam_id_text)?;
-        let (hero_names, profile, win_loss, recent, ranked) = tokio::join!(
-            self.hero_localized_names(),
+        let (heroes, profile, win_loss, recent, ranked) = tokio::join!(
+            self.heroes(),
             self.get_cached(format!("player_{account}.json"), format!("players/{account}"), Some(hours(6))),
             self.get_cached(
                 format!("player_{account}_wl_all_modes.json"),
@@ -297,8 +313,11 @@ impl OpenDota {
         };
         let resolved = rank_estimate::resolve(rank_tier, leaderboard, history, mmr, None, is_private);
 
-        let wins = win_loss.as_ref().and_then(|w| w.get("win")).and_then(as_i64).unwrap_or_default();
-        let losses = win_loss.as_ref().and_then(|w| w.get("lose")).and_then(as_i64).unwrap_or_default();
+        let wins = win_loss.as_ref().and_then(|w| w.get("win")).and_then(as_i64);
+        let losses = win_loss.as_ref().and_then(|w| w.get("lose")).and_then(as_i64);
+        let possible_smurf = !is_private && wins.zip(losses).is_some_and(|(wins, losses)| possible_smurf(wins, losses));
+        let wins = wins.unwrap_or_default();
+        let losses = losses.unwrap_or_default();
         let total = wins + losses;
         let avatar = ["avatarfull", "avatarmedium", "avatar"]
             .iter()
@@ -308,6 +327,7 @@ impl OpenDota {
             .unwrap_or_default();
         let persona = details.get("personaname").and_then(Value::as_str).unwrap_or_default();
 
+        let heroes = heroes.unwrap_or_default();
         Some(PlayerOverview {
             steam_id: steam_id_text.trim().into(),
             display_name: [persona, steam_id_text]
@@ -325,11 +345,12 @@ impl OpenDota {
             wins,
             losses,
             win_rate_percent: (total > 0).then(|| (wins as f64 * 1000.0 / total as f64).round() / 10.0),
+            possible_smurf,
             is_private,
             recent_matches: recent
                 .as_ref()
                 .and_then(Value::as_array)
-                .map(|rows| rows.iter().map(|m| to_match_row(m, &hero_names)).collect())
+                .map(|rows| rows.iter().map(|m| to_match_row(m, &heroes)).collect())
                 .unwrap_or_default(),
         })
     }
@@ -388,7 +409,12 @@ impl OpenDota {
 
     // ---- Match history -------------------------------------------------------------------
 
-    pub async fn recent_match_summaries(&self, steam_id_text: &str, excluded_match_id: &str) -> (Vec<RecentMatchSummary>, String) {
+    pub async fn recent_match_summaries(
+        &self,
+        steam_id_text: &str,
+        excluded_match_id: &str,
+        replay: Option<&dyn ReplaySource>,
+    ) -> (Vec<RecentMatchSummary>, String) {
         let Some(account) = steam_id::to_account_id(steam_id_text) else {
             return (Vec::new(), "Recent matches unavailable.".into());
         };
@@ -415,9 +441,10 @@ impl OpenDota {
             })
             .collect();
         rows.sort_by_key(|m| std::cmp::Reverse(m.get("start_time").and_then(as_i64).unwrap_or_default()));
+        rows.truncate(5);
+        let outcomes = load_analysis_outcomes(replay, rows.iter().filter_map(|m| m.get("match_id").and_then(as_i64))).await;
         let recent: Vec<RecentMatchSummary> = rows
             .into_iter()
-            .take(5)
             .map(|m| {
                 let hero_id = m.get("hero_id").and_then(as_i32).unwrap_or_default();
                 let hero = heroes.iter().find(|h| h.id == hero_id);
@@ -426,6 +453,7 @@ impl OpenDota {
                     hero_name: hero.map_or(format!("Hero {hero_id}"), |h| h.localized_name.clone()),
                     hero_image_url: assets::hero_icon(&key),
                     result: if won(m) { "Win" } else { "Loss" }.into(),
+                    analysis_outcome: m.get("match_id").and_then(as_i64).and_then(|id| outcomes.get(&id).copied()),
                 }
             })
             .collect();
@@ -437,16 +465,16 @@ impl OpenDota {
         (recent, label.into())
     }
 
-    /// `with/against` counts of past matches together, `You`, or why it is unavailable.
-    pub async fn encounter_label(&self, local_steam_id: &str, player_steam_id: &str, excluded_match_id: &str) -> String {
+    /// Latest shared matches and the recorded with/against counts or an availability message.
+    pub async fn encounters(&self, local_steam_id: &str, player_steam_id: &str, excluded_match_id: &str) -> (Vec<RecentEncounter>, String) {
         let Some(local) = steam_id::to_account_id(local_steam_id) else {
-            return "Your account is needed for encounter history.".into();
+            return (Vec::new(), "Your account is needed for encounter history.".into());
         };
         let Some(player) = steam_id::to_account_id(player_steam_id) else {
-            return "Encounter history unavailable.".into();
+            return (Vec::new(), "Encounter history unavailable.".into());
         };
         if local == player {
-            return "You".into();
+            return (Vec::new(), "You".into());
         }
         let quarter_hour = Some(Duration::from_secs(15 * 60));
         let (with, against) = tokio::join!(
@@ -461,19 +489,64 @@ impl OpenDota {
                 quarter_hour
             ),
         );
-        let count = |v: &Option<Value>| {
-            v.as_ref().and_then(Value::as_array).map(|rows| {
-                rows.iter()
-                    .filter(|m| m.get("match_id").and_then(as_i64).unwrap_or_default().to_string() != excluded_match_id)
-                    .count()
-            })
+        let collect = |rows: &[Value], side| {
+            rows.iter().filter_map(|row| {
+                let id = row.get("match_id").and_then(as_i64).filter(|&id| id > 0)?.to_string();
+                if id == excluded_match_id {
+                    return None;
+                }
+                let played_at = row.get("start_time").and_then(as_i64)
+                    .filter(|&time| time > 0)
+                    .and_then(|time| Utc.timestamp_opt(time, 0).single());
+                let hero_id = row.get("hero_id").and_then(as_i32).filter(|&id| id > 0);
+                let result = match (row.get("player_slot").and_then(as_i32), row.get("radiant_win").and_then(Value::as_bool)) {
+                    (Some(_), Some(_)) if won(row) => "Win",
+                    (Some(_), Some(_)) => "Loss",
+                    _ => "",
+                };
+                Some((id, side, played_at, hero_id, result))
+            }).collect::<Vec<_>>()
         };
-        match (count(&with), count(&against)) {
-            (Some(w), Some(a)) => {
-                format!("{}/{}", rank_estimate::thousands(w as i64), rank_estimate::thousands(a as i64))
+        let with = with.as_ref().and_then(Value::as_array);
+        let against = against.as_ref().and_then(Value::as_array);
+        let mut teammates = collect(with.map_or(&[], Vec::as_slice), EncounterSide::With);
+        let opponents = collect(against.map_or(&[], Vec::as_slice), EncounterSide::Against);
+        let label = if with.is_none() || against.is_none() {
+            if teammates.is_empty() && opponents.is_empty() {
+                "Encounter history unavailable.".into()
+            } else {
+                "Some encounter history is unavailable.".into()
             }
-            _ => "Encounter history unavailable.".into(),
-        }
+        } else if teammates.is_empty() && opponents.is_empty() {
+            "No shared matches recorded.".into()
+        } else {
+            format!("{} with · {} against", rank_estimate::thousands(teammates.len() as i64), rank_estimate::thousands(opponents.len() as i64))
+        };
+        teammates.extend(opponents);
+        teammates.sort_by_key(|(_, _, played_at, _, _)| std::cmp::Reverse(*played_at));
+        teammates.truncate(5);
+        let heroes = if teammates.is_empty() {
+            None
+        } else {
+            self.heroes().await.ok()
+        };
+        let recent = teammates.into_iter().map(|(match_id, side, played_at, hero_id, result)| {
+            // Both queries are scoped to the local account, so the hero and result are theirs.
+            let hero = heroes.as_ref().and_then(|heroes| heroes.iter().find(|hero| Some(hero.id) == hero_id));
+            RecentEncounter {
+                match_id,
+                side,
+                played_at,
+                summary: RecentMatchSummary {
+                    hero_name: hero.map(|hero| hero.localized_name.clone())
+                        .unwrap_or_else(|| hero_id.map_or("Unknown hero".into(), |id| format!("Hero {id}"))),
+                    hero_image_url: hero.map(|hero| assets::hero_icon(&hero_icon_key(&hero.name))).unwrap_or_default(),
+                    result: result.into(),
+                    analysis_outcome: None,
+                },
+            }
+        }).collect();
+        (recent, label)
     }
 
     /// Result, KDA, position and items of the player's latest completed match on `hero_name`.
@@ -538,11 +611,11 @@ impl OpenDota {
         let mut position_basis = "OpenDota parsed-match estimate.".to_string();
         let mut estimated = true;
 
-        let reported = match replay {
-            Some(source) => source.positions(latest_id).await.ok().flatten(),
-            None => None,
+        let (reported, analysis_outcome) = match replay {
+            Some(source) => tokio::join!(source.positions(latest_id), source.analysis_outcome(latest_id)),
+            None => (Ok(None), None),
         };
-        if let Some(p) = reported.and_then(|r| r.get(&(account as i64)).copied()).filter(|p| (1..=5).contains(p)) {
+        if let Some(p) = reported.ok().flatten().and_then(|r| r.get(&(account as i64)).copied()).filter(|p| (1..=5).contains(p)) {
             position = Some(p);
             position_basis = "Position from STRATZ replay analysis.".into();
             estimated = false;
@@ -629,8 +702,7 @@ impl OpenDota {
             }
         }
 
-        let hero_names: HashMap<i32, String> = heroes.iter().map(|h| (h.id, h.localized_name.clone())).collect();
-        let row = to_match_row(latest, &hero_names);
+        let row = to_match_row(latest, &heroes);
         let build_label = if items.is_empty() {
             " · Item build unavailable"
         } else if items.iter().any(|i| i.slot == "Purchase") {
@@ -658,6 +730,7 @@ impl OpenDota {
                 row.played_at
             ),
             hero_match_url: format!("https://www.opendota.com/matches/{latest_id}"),
+            analysis_outcome,
             items,
             ..Default::default()
         }
@@ -753,14 +826,17 @@ fn won(m: &Value) -> bool {
     radiant == (m.get("radiant_win").and_then(Value::as_bool) == Some(true))
 }
 
-fn to_match_row(m: &Value, hero_names: &HashMap<i32, String>) -> PlayerMatchRow {
+fn to_match_row(m: &Value, heroes: &[Hero]) -> PlayerMatchRow {
     let hero_id = m.get("hero_id").and_then(as_i32).unwrap_or_default();
+    let hero = heroes.iter().find(|hero| hero.id == hero_id);
     let stat = |k: &str| m.get(k).and_then(as_i64).unwrap_or_default();
     let start = stat("start_time");
     PlayerMatchRow {
         match_id: stat("match_id").to_string(),
-        hero_name: hero_names.get(&hero_id).cloned().unwrap_or_else(|| format!("Hero {hero_id}")),
+        hero_name: hero.map_or_else(|| format!("Hero {hero_id}"), |hero| hero.localized_name.clone()),
+        hero_image_url: hero.map(|hero| assets::hero_icon(&hero_icon_key(&hero.name))).unwrap_or_default(),
         result: if won(m) { "Win" } else { "Loss" }.into(),
+        analysis_outcome: None,
         kda: format!("{}/{}/{}", stat("kills"), stat("deaths"), stat("assists")),
         duration: match_build::format_duration(stat("duration")),
         played_at: Local

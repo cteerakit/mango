@@ -1,4 +1,4 @@
-import { type ButtonHTMLAttributes, type ReactNode, useEffect, useId, useRef } from "react";
+import { type ButtonHTMLAttributes, type PointerEvent, type ReactNode, useEffect, useId, useRef } from "react";
 import { X } from "lucide-react";
 
 export function cx(...classes: (string | false | null | undefined)[]) {
@@ -70,6 +70,53 @@ export function Card({ children, className }: { children: ReactNode; className?:
   return <section className={cx("rounded-xl border border-line bg-surface", className)}>{children}</section>;
 }
 
+export function ScrollableTable({ children }: { children: ReactNode }) {
+  const drag = useRef<{ pointerId: number; startX: number; startScrollLeft: number } | null>(null);
+  const endDrag = (event: PointerEvent<HTMLDivElement>) => {
+    if (drag.current?.pointerId !== event.pointerId) return;
+    drag.current = null;
+    event.currentTarget.removeAttribute("data-dragging");
+  };
+
+  return (
+    <div
+      className="overflow-x-auto data-[dragging]:cursor-grabbing data-[dragging]:select-none"
+      onPointerDown={(event) => {
+        const table = event.currentTarget;
+        if (event.pointerType !== "mouse" || event.button !== 0 || table.scrollWidth <= table.clientWidth) return;
+        if (!(event.target instanceof Element) || event.target.closest("a, button, input, select, textarea, [contenteditable], .select-text")) return;
+
+        event.preventDefault();
+        drag.current = { pointerId: event.pointerId, startX: event.clientX, startScrollLeft: table.scrollLeft };
+        table.setAttribute("data-dragging", "");
+      }}
+      onPointerMove={(event) => {
+        const start = drag.current;
+        if (!start || start.pointerId !== event.pointerId) return;
+
+        const table = event.currentTarget;
+        const distance = event.clientX - start.startX;
+        if (!table.hasPointerCapture(event.pointerId)) {
+          if (Math.abs(distance) < 4) return;
+          table.setPointerCapture(event.pointerId);
+        }
+        table.scrollLeft = start.startScrollLeft - distance;
+      }}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      onPointerLeave={(event) => {
+        if (!event.currentTarget.hasPointerCapture(event.pointerId)) endDrag(event);
+      }}
+      onLostPointerCapture={endDrag}
+      onDragStart={(event) => {
+        if (drag.current) event.preventDefault();
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function CardSection({ title, description, children }: { title: string; description?: ReactNode; children?: ReactNode }) {
   return (
     <Card className="p-5">
@@ -88,7 +135,7 @@ export function Page({ title, subtitle, actions, children, wide }: {
   wide?: boolean;
 }) {
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full overflow-y-auto" data-page-scroll>
       <div className={cx("mx-auto space-y-5 px-8 py-7", wide ? "max-w-none" : "max-w-3xl")}>
         <header className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -131,8 +178,8 @@ export function Switch({ label, description, checked, onChange, disabled }: {
       >
         <span
           className={cx(
-            "absolute top-0.5 size-4.5 rounded-full shadow transition-transform",
-            checked ? "translate-x-5.5 bg-accent-fg" : "translate-x-0.5 bg-muted",
+            "absolute top-0.5 left-0.5 size-4.5 rounded-full shadow transition-transform",
+            checked ? "translate-x-5 bg-accent-fg" : "bg-muted",
           )}
         />
       </button>

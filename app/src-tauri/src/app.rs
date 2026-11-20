@@ -35,6 +35,7 @@ pub struct AppState {
     pub settings: Arc<SettingsStore>,
     pub http: SharedHttp,
     pub opendota: Arc<OpenDota>,
+    pub stratz: Arc<Stratz>,
     pub store: Arc<MatchStore>,
     pub match_view: Arc<MatchView>,
     pub overlay: Overlay,
@@ -146,7 +147,7 @@ impl AppState {
             let _ = changed_tx.send(());
         });
         let view_app = app.clone();
-        let match_view = MatchView::new(store.clone(), settings.clone(), opendota.clone(), stratz, move |view| {
+        let match_view = MatchView::new(store.clone(), settings.clone(), opendota.clone(), stratz.clone(), move |view| {
             let _ = view_app.emit(EVENT_MATCH_VIEW, view);
         });
 
@@ -155,6 +156,7 @@ impl AppState {
             settings,
             http,
             opendota,
+            stratz,
             store,
             match_view,
             overlay: Overlay::default(),

@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use mango_core::assets;
 use mango_core::notes::{self, NoteVote};
 use mango_core::rank_estimate::format_rank_tier;
 use mango_core::ranks::{self, PlayerRankOverride};
@@ -18,10 +19,11 @@ use crate::hotkeys;
 use crate::match_store::StoreState;
 use crate::match_view::{local_steam_id, MatchPageView};
 use crate::mock;
-use crate::opendota::PlayerOverview;
+use crate::opendota::{load_analysis_outcomes, PlayerOverview};
 use crate::overlay::Rect;
 use crate::overlay_state::{self, OverlayView};
 use crate::settings::HotkeyBinding;
+use crate::stratz::StratzReplay;
 use crate::updater::{self, UpdateCheck};
 
 type S<'a> = State<'a, Arc<AppState>>;
@@ -382,20 +384,51 @@ pub fn player_identity(state: S, steam_id: String) -> LocalIdentity {
 #[serde(rename_all = "camelCase")]
 pub struct PlayerProfile {
     overview: Option<PlayerOverview>,
-    /// Saved manual rank, else OpenDota's.
-    rank_text: String,
+    rank_medal: Option<ProfileRankMedal>,
     error: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ProfileRankMedal {
+    icon: String,
+    star: String,
+    estimated: bool,
+    label: String,
 }
 
 #[tauri::command]
 pub async fn player_profile(state: S<'_>, steam_id: String) -> Result<PlayerProfile, String> {
     let is_mock = state.store.state().is_using_mock_data;
-    let overview = if is_mock { Some(mock::player_overview(&steam_id)) } else { state.opendota.player_overview(&steam_id).await };
+    let overview = if is_mock {
+        Some(mock::player_overview(&steam_id))
+    } else {
+        let mut overview = state.opendota.player_overview(&steam_id).await;
+        let token = state.settings.read().stratz_api_token.clone();
+        if let Some(profile) = overview.as_mut().filter(|_| !token.trim().is_empty()) {
+            let replay = StratzReplay { stratz: state.stratz.clone(), token };
+            let ids = profile.recent_matches.iter().filter_map(|row| row.match_id.parse::<i64>().ok());
+            let outcomes = load_analysis_outcomes(Some(&replay), ids).await;
+            for row in &mut profile.recent_matches {
+                row.analysis_outcome = row.match_id.parse::<i64>().ok().and_then(|id| outcomes.get(&id).copied());
+            }
+        }
+        overview
+    };
     let settings = state.settings.read();
     let (private, reported) = overview.as_ref().map_or((false, None), |o| (o.is_private, o.rank_tier));
     let saved = ranks::get(&settings.player_ranks, &steam_id, private, reported);
-    let remote = overview.as_ref().map_or("—".to_string(), |o| o.rank_label.clone());
-    let rank_text = saved.map_or(remote, |r| format!("Manual: {}", format_rank_tier(Some(r.rank_tier), None)));
+    let rank = if let Some(saved) = saved {
+        let tier = Some(saved.rank_tier);
+        Some((tier, false, format!("Manual: {}", format_rank_tier(tier, None))))
+    } else {
+        overview.as_ref().map(|o| (o.display_rank_tier, o.rank_is_estimated, o.rank_label.clone()))
+    };
+    let rank_medal = rank.map(|(tier, estimated, label)| ProfileRankMedal {
+        icon: assets::rank_icon(tier),
+        star: assets::rank_star(tier),
+        estimated,
+        label: if tier.is_none() && label == "—" { "Unranked".into() } else { label },
+    });
     let error = overview.is_none().then(|| {
         if steam_id::to_account_id(&steam_id).is_none() {
             "This player ID is not a valid Steam or OpenDota account ID.".to_string()
@@ -403,7 +436,7 @@ pub async fn player_profile(state: S<'_>, steam_id: String) -> Result<PlayerProf
             "OpenDota is temporarily unavailable. Check your internet connection and tap Retry, or try again in a few minutes.".to_string()
         }
     });
-    Ok(PlayerProfile { overview, rank_text, error })
+    Ok(PlayerProfile { overview, rank_medal, error })
 }
 
 // ---- Overlay -----------------------------------------------------------------------------
