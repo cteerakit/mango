@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <title>Mango app icon</title>
+  <defs>
+    <linearGradient id="tile" x2="0" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#222D34"/>
+      <stop offset="1" stop-color="#10171D"/>
+    </linearGradient>
+    <linearGradient id="fruit" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFF295"/>
+      <stop offset=".48" stop-color="#FFD153"/>
+      <stop offset="1" stop-color="#FC762D"/>
+    </linearGradient>
+    <linearGradient id="leaf" x2="1" y2="1">
+      <stop stop-color="#A8EC79"/>
+      <stop offset="1" stop-color="#46C198"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#tile)"/>
+  <rect x="9" y="9" width="238" height="238" rx="55" fill="none" stroke="#39464E" stroke-width="2"/>
+  <path fill="url(#fruit)" d="M59 151c8-28 29-51 56-68 23-14 49-17 66-4 20 15 23 41 14 66-14 37-49 67-90 66-33-1-55-24-46-60Z"/>
+  <path fill="#FFF6B9" d="M79 140c10-22 30-41 56-51 5-2 8 4 3 7-23 13-39 29-49 48-4 7-13 4-10-4Z"/>
+  <path fill="url(#leaf)" d="M157 64c8-20 27-30 57-28-7 27-25 39-57 28Z"/>
+</svg>

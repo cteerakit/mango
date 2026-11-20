@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Mango's own windows: the companion shell and the in-game overlay.",
+  "windows": ["main", "overlay"],
+  "permissions": ["core:default", "dialog:allow-open", "dialog:allow-save", "dialog:allow-message", "dialog:allow-ask", "opener:allow-open-url"]
+}

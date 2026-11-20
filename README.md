@@ -20,42 +20,39 @@ Windows desktop companion for Dota 2. Mango connects through Valve Game State In
 
 ## Requirements
 
-- Windows 10 19041+ / Windows 11
-- .NET 10 SDK (or .NET 8+ with Windows App SDK workload)
+- Windows 10 19041+ / Windows 11 (WebView2 runtime; the installer adds it when missing)
 - Dota 2 installed via Steam
 - Dota running in **Borderless Windowed** (not exclusive fullscreen)
 - Steam launch option: `-gamestateintegration`
 
-## Quick start
+For development: [Rust](https://rustup.rs) (stable, MSVC) and Node.js 22+.
 
-1. Open `Mango.sln` in Visual Studio 2022 or run:
-
-```powershell
-dotnet build Mango.sln
-dotnet run --project src/Mango/Mango.csproj
-```
-
-2. On first launch, Mango installs `gamestate_integration_mango.cfg` into your Dota `cfg/gamestate_integration/` folder.
-3. Add `-gamestateintegration` to Dota launch options in Steam if not already set.
-4. Start a match — live data updates from GSI on `http://127.0.0.1:40000/`. Open **Match** in the companion window for the roster, or enable the overlay for in-game widgets.
-
-## Reload during development
-
-For in-place XAML and C# Hot Reload, open `Mango.sln` in Visual Studio, select the **Mango (Unpackaged)** launch profile and **Debug / x64**, then press **F5**. Save supported edits while the debugger is attached. Some edits require restarting the app. See [Microsoft's WinUI runtime design tools guide](https://learn.microsoft.com/en-us/windows/apps/develop/ui/xaml-runtime-design-tools).
-
-For command-line development, close any running Mango instance, then run:
+## Quick start (development)
 
 ```powershell
-.\scripts\watch.ps1
+cd app
+npm install
+npm run dev
 ```
 
-This watches source files, rebuilds, and restarts Mango after changes. It does not preserve the running UI state. Press **Ctrl+C** to stop.
+`npm run dev` starts the Vite dev server and opens Mango. **Edits to anything under `app/src` (React, CSS) appear in the running app immediately**, without a restart or losing the current page. Rust changes under `app/src-tauri` or `app/crates` rebuild and restart the app automatically.
+
+On first launch, Mango installs `gamestate_integration_mango.cfg` into your Dota `cfg/gamestate_integration/` folder. Start a match — live data arrives on `http://127.0.0.1:40000/`.
 
 ### Work with mock data
 
-In Mango, open **About > Open developer options** and turn on **Show mock data**. The same app shows sample match, player, and overlay data without a Dota match. The setting is saved across restarts, including when using `scripts\watch.ps1`.
+Open **About > Open developer options** and turn on **Show mock data**. Mango shows a sample match, players, and overlay without Dota, so you can work on the UI with hot reload. The setting is saved across restarts.
 
-Turn it off to return to live data. The GSI listener and hotkeys stay available, and the overlay remains controlled by its normal visibility toggle.
+You can also run just the UI in a browser with `npm run vite` (http://localhost:1420). Data calls return empty defaults there; the overlay page (`/overlay.html`) shows a preview.
+
+### Tests
+
+```powershell
+cd app
+npm test                 # UI helpers (Vitest)
+npx vite build           # the Rust crate embeds the built UI
+cargo test --workspace   # game logic, services, settings compatibility
+```
 
 ## Hotkeys
 
@@ -64,49 +61,55 @@ Turn it off to return to live data. The GSI listener and hotkeys stay available,
 | `Alt+F9` | Toggle overlay visibility |
 | `Alt+`` | Toggle interactive mode (drag panels) |
 
+Change them on the **Shortcuts** page.
+
 ## Settings
 
-Stored in `%LOCALAPPDATA%\Mango\settings.json`:
+Stored in `%LOCALAPPDATA%\Mango\settings.json` — the same file and format as the earlier WinUI app, so settings and notes carry over in both directions:
 
 - Overlay panel visibility, opacity, and layout positions
 - Turbo mode timer rules
 - GSI auth token
-- Optional STRATZ API token (Settings page)
+- Optional Steam Web API key and STRATZ API token (Settings page)
+- Player notes, votes, toxic marks, and manual ranks
 
-Use **Save settings** in the shell after changing panel toggles or opacity on the Overlay page.
+Changes save as you make them. Diagnostics go to `%LOCALAPPDATA%\Mango\mango.log`.
 
 ## Troubleshooting
 
 | Issue | Fix |
 |-------|-----|
 | No live data | Confirm you're in a match (not main menu), GSI cfg exists, launch option set |
+| "Port 40000 is in use" on Status | Close any other Mango (for example an older install) and restart Mango |
 | Match/player data empty | Requires internet for OpenDota data and avatars; add a Steam Web API key in Settings for live teams and heroes |
 | Overlay not visible | Use borderless windowed; exclusive fullscreen hides external overlays |
-| Firewall prompt | Allow localhost connections for the app |
+| Hotkey does nothing | Another app may own it — see Status, or pick another combination on Shortcuts |
 
 ## Package
 
-Download `MangoSetup-x64.exe` from the [latest GitHub release](https://github.com/cteerakit/mango/releases/latest). Run it to install Mango for your Windows user. It includes the runtimes and adds a Start menu shortcut. No administrator access, PowerShell, or certificate import is required. The unsigned installer may show a Windows security warning, and some security policies block unsigned apps.
+Download `MangoSetup-x64.exe` from the [latest GitHub release](https://github.com/cteerakit/mango/releases/latest). Run it to install Mango for your Windows user and add a Start menu shortcut. No administrator access is required. The unsigned installer may show a Windows security warning, and some security policies block unsigned apps.
 
-In **Settings > App updates**, select **Check for updates**, then **Install update and restart** when a newer version is available. Mango downloads and verifies the installer, installs it, and reopens. Settings and notes are kept. **Download installer manually** is available as a fallback.
+In **Settings > App updates**, select **Check for updates**, then **Install update and restart** when a newer version is available. Mango downloads and verifies the installer, installs it, and reopens. Settings and notes are kept. **Download installer manually** is available as a fallback. See [Publishing Mango installers](docs/automatic-updates.md).
 
-Existing MSIX users should install the EXE version and confirm their settings and notes before removing the old app. See [Publishing Mango installers](docs/automatic-updates.md) for migration details and release setup.
-
-To build the self-contained Windows x64 installer:
+To build the Windows x64 installer (versions end in `.0`):
 
 ```powershell
-./scripts/Build-Installer.ps1 -Version 1.0.3.0
+./scripts/Build-Installer.ps1 -Version 1.1.0.0
 ```
 
 ## Architecture
 
-- `GsiListenerService` — local `HttpListener` on port 40000
-- `MatchStore` — normalized live state for UI binding
-- Shell pages — Match, Player, Status, Settings
-- `OverlayWindow` — transparent WinUI overlay with Win32 click-through
-- `OpenDotaService` — cached player enrichment and item metadata
+Mango is a [Tauri 2](https://tauri.app) app: a Rust backend with a React + TypeScript + Tailwind UI rendered by WebView2.
+
+- `app/crates/mango-core` — game logic with no I/O: GSI parsing and normalization, roster merging, match-page state, notes, ranks and rank estimates, rune timers, Steam mappers
+- `app/src-tauri` — the app: GSI listener (axum on `127.0.0.1:40000`), OpenDota/STRATZ/Steam clients with a file cache, live roster resolution, settings, the overlay window (Win32 click-through and regions), hotkeys, updater
+- `app/src` — the companion UI (`index.html`) and the overlay page (`overlay.html`)
+
+The local Steam roster runs Steam's API in a short-lived `Mango.exe --steam-roster` helper process, never in the app itself.
 
 No game memory reading or injection — GSI + public APIs only.
+
+The previous WinUI 3 / C# app is still in `src/` and `tests/` for reference while the Tauri app is validated in game.
 
 ## License
 

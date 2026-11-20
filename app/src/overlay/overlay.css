@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+:root {
+  --hud-label: #c1d2e9;
+  --hud-number: #ffffff;
+  --hud-accent: #c8a45a;
+  --hud-muted: #9aa7b5;
+  --hud-label-font: "Radiance", "Segoe UI", sans-serif;
+  --hud-value-font: "Radiance Semibold", "Segoe UI", sans-serif;
+}
+
+/* Geometry and falloff match the in-game stat rows: a 22 px strip fading out from the screen edge. */
+.hud-row {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  --fade: rgb(60 79 92 / 0.62) 0%, rgb(60 79 92 / 0.57) 18%, rgb(60 79 92 / 0.45) 37%, rgb(60 79 92 / 0.36) 55%,
+    rgb(60 79 92 / 0.25) 73%, rgb(60 79 92 / 0.11) 86%, rgb(60 79 92 / 0) 97%;
+  background: linear-gradient(to right, var(--fade));
+  padding-left: 10px;
+}
+
+.hud-row[data-edge="right"] {
+  background: linear-gradient(to left, var(--fade));
+  justify-content: flex-end;
+  padding-left: 0;
+  padding-right: 10px;
+}
+
+.hud-label,
+.hud-value {
+  text-shadow: 0 1px 5px rgb(0 0 0 / 0.85), 0 0 2px rgb(0 0 0 / 0.6);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.hud-label {
+  color: var(--hud-label);
+  font-family: var(--hud-label-font);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.hud-value {
+  color: var(--hud-number);
+  font-family: var(--hud-value-font);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.hud-panel {
+  background: rgb(16 24 32 / 0.8);
+  border: 1px solid rgb(68 85 102 / 0.2);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.hud-widget[data-interactive="true"] {
+  cursor: grab;
+  outline: 1px dashed rgb(200 164 90 / 0.8);
+  outline-offset: 2px;
+}
+
+.hud-widget[data-dragging="true"] {
+  cursor: grabbing;
+}

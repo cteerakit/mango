@@ -23,7 +23,9 @@ function Invoke-Setup {
 try {
     Invoke-Setup
     $exe = Join-Path $testRoot 'Mango.exe'
-    if ([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion -ne $Version) { throw 'Installed version differs from the release version.' }
+    $info = [Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
+    $fileVersion = "$($info.FileMajorPart).$($info.FileMinorPart).$($info.FileBuildPart).$($info.FilePrivatePart)"
+    if ($fileVersion -ne $Version) { throw "Installed version $fileVersion differs from the release version $Version." }
     $shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'Mango.lnk'
     if (-not (Test-Path -LiteralPath $shortcut)) { throw 'Start menu shortcut is missing.' }
     $shell = New-Object -ComObject WScript.Shell
@@ -54,6 +56,7 @@ public static class MangoInstallerVerification
         throw 'Mango unexpectedly requires package identity.'
     }
     Write-Output "Installed Mango $Version launched without MSIX registration."
+    # Closing the companion window quits Mango (the tray icon goes with it).
     [void]$appProcess.CloseMainWindow()
     if (-not $appProcess.WaitForExit(10000)) { throw 'Mango did not close normally.' }
 

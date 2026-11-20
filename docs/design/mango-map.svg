@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <title>Minimap</title>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="#262329"/>
+  <path fill="#37313A" stroke="#645662" stroke-width="3" d="M66 51h122a17 17 0 0 1 17 17v120a17 17 0 0 1-17 17H66a17 17 0 0 1-17-17V68a17 17 0 0 1 17-17Z"/>
+  <path d="M64 189 188 65M65 162V69h92m34 24v94H97" fill="none" stroke="#A092A0" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="65" cy="187" r="14" fill="#6EDBB5"/>
+  <circle cx="189" cy="69" r="14" fill="#F68B77"/>
+  <path d="M111 107c15-13 32-15 40-5 10 11 6 32-7 45-13 13-33 17-43 7-11-10-4-33 10-47Z" fill="#FFBC54"/>
+  <path d="M143 92c4-11 15-15 28-14-4 11-14 16-28 14Z" fill="#A8E785"/>
+</svg>
