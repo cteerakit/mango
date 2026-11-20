@@ -6,6 +6,14 @@ use serde::{Deserialize, Serialize};
 /// Items beyond this many go into the "+N" overflow.
 pub const VISIBLE_ITEM_COUNT: usize = 11;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MatchAnalysisOutcome {
+    Stomp,
+    Comeback,
+    CloseGame,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct PlayerMatchHistory {
@@ -17,8 +25,10 @@ pub struct PlayerMatchHistory {
     pub is_position_estimated: bool,
     pub played_at: Option<DateTime<Utc>>,
     pub encounter_label: String,
+    pub recent_encounters: Vec<RecentEncounter>,
     pub hero_match_label: String,
     pub hero_match_url: String,
+    pub analysis_outcome: Option<MatchAnalysisOutcome>,
     pub items: Vec<MatchBuildItem>,
     pub recent_matches: Vec<RecentMatchSummary>,
     pub recent_matches_label: String,
@@ -34,13 +44,31 @@ impl Default for PlayerMatchHistory {
             is_position_estimated: true,
             played_at: None,
             encounter_label: "Loading past encounters…".into(),
+            recent_encounters: Vec::new(),
             hero_match_label: "Loading latest hero match…".into(),
             hero_match_url: String::new(),
+            analysis_outcome: None,
             items: Vec::new(),
             recent_matches: Vec::new(),
             recent_matches_label: "Loading recent matches…".into(),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum EncounterSide {
+    With,
+    Against,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentEncounter {
+    pub match_id: String,
+    pub side: EncounterSide,
+    pub played_at: Option<DateTime<Utc>>,
+    pub summary: RecentMatchSummary,
 }
 
 impl PlayerMatchHistory {
@@ -119,6 +147,7 @@ pub struct RecentMatchSummary {
     pub hero_name: String,
     pub hero_image_url: String,
     pub result: String,
+    pub analysis_outcome: Option<MatchAnalysisOutcome>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

@@ -2,7 +2,7 @@
 
 use chrono::{Duration, Utc};
 use mango_core::assets;
-use mango_core::history::{MatchBuildItem, PlayerMatchHistory, RecentMatchSummary};
+use mango_core::history::{EncounterSide, MatchAnalysisOutcome, MatchBuildItem, PlayerMatchHistory, RecentEncounter, RecentMatchSummary};
 use mango_core::model::{MatchPlayer, MatchSnapshot, SlotSnapshot};
 use mango_core::rank_estimate::format_rank_tier;
 
@@ -77,6 +77,16 @@ fn player(name: &str, steam_id: &str, team: &str, hero: &str, level: i32, k: i32
     }
 }
 
+const SMURF_STEAM_ID: &str = "76561198000000002";
+const SMURF_RECORD: (i64, i64) = (126, 54);
+const SHARED_MATCHES: [(&str, &str, &str); 5] = [
+    ("Juggernaut", "juggernaut", "Win"),
+    ("Phantom Assassin", "phantom_assassin", "Loss"),
+    ("Axe", "axe", "Win"),
+    ("Invoker", "invoker", "Loss"),
+    ("Crystal Maiden", "crystal_maiden", "Win"),
+];
+
 pub fn players() -> Vec<MatchPlayer> {
     vec![
         player("Mango Tester", "76561198000000001", "radiant", "juggernaut", 18, 8, 2, 6, 214, 12, 612, 704, 2840),
@@ -85,7 +95,7 @@ pub fn players() -> Vec<MatchPlayer> {
         player("Radiant Support", "", "radiant", "crystal_maiden", 14, 1, 7, 18, 28, 2, 286, 392, 620),
         player("Radiant Hard Support", "", "radiant", "lich", 13, 0, 6, 16, 18, 1, 248, 356, 480),
         player("Dire Carry", "", "dire", "phantom_assassin", 17, 7, 3, 4, 198, 10, 584, 668, 2520),
-        player("Dire Mid", "", "dire", "invoker", 16, 5, 4, 7, 142, 14, 512, 644, 1780),
+        player("Dire Mid", SMURF_STEAM_ID, "dire", "invoker", 16, 5, 4, 7, 142, 14, 512, 644, 1780),
         player("Dire Offlane", "", "dire", "axe", 15, 3, 6, 11, 84, 4, 396, 452, 980),
         player("Dire Support", "", "dire", "shadow_shaman", 13, 2, 8, 12, 22, 0, 268, 368, 540),
         player("Dire Hard Support", "", "dire", "warlock", 12, 1, 9, 13, 14, 1, 224, 332, 420),
@@ -95,7 +105,7 @@ pub fn players() -> Vec<MatchPlayer> {
 struct Preview {
     tier: i32,
     matches: &'static str,
-    encounter: &'static str,
+    encounters: &'static [EncounterSide],
     hero_match: &'static str,
     items: &'static [&'static str],
     private: bool,
@@ -104,26 +114,27 @@ struct Preview {
 }
 
 fn preview(name: &str) -> Option<Preview> {
-    let p = |tier, matches, encounter, hero_match, items, kda| Preview { tier, matches, encounter, hero_match, items, private: false, kda, estimated: false };
+    use EncounterSide::{Against, With};
+    let p = |tier, matches, encounters: &'static [EncounterSide], hero_match, items, kda| Preview { tier, matches, encounters, hero_match, items, private: false, kda, estimated: false };
     Some(match name {
-        "Mango Tester" => p(75, "4,210 (52.4%)", "That's you.", "Latest on Juggernaut: Win · 31:12",
+        "Mango Tester" => p(75, "4,210 (52.4%)", &[], "Latest on Juggernaut: Win · 31:12",
             &["bfury", "power_treads", "manta", "black_king_bar", "butterfly", "abyssal_blade"], "12/3/9"),
-        "Radiant Mid" => p(63, "2,964 (50.1%)", "3/1", "Latest on Storm Spirit: Loss · 27:40",
+        "Radiant Mid" => p(63, "2,964 (50.1%)", &[With, Against, Against, With, With], "Latest on Storm Spirit: Loss · 27:40",
             &["bloodstone", "kaya_and_sange", "blink", "travel_boots", "shivas_guard", "octarine_core"], "7/8/11"),
-        "Radiant Offlane" => p(54, "1,508 (49.3%)", "0/0", "Latest on Tidehunter: Win · 35:02",
+        "Radiant Offlane" => p(54, "1,508 (49.3%)", &[], "Latest on Tidehunter: Win · 35:02",
             &["blink", "pipe", "crimson_guard", "arcane_boots", "heart"], "4/5/23"),
-        "Radiant Support" => p(41, "902 (47.8%)", "1/0", "Latest on Crystal Maiden: Win · 29:55",
+        "Radiant Support" => p(41, "902 (47.8%)", &[With], "Latest on Crystal Maiden: Win · 29:55",
             &["glimmer_cape", "force_staff", "tranquil_boots", "aether_lens"], "3/7/28"),
-        "Radiant Hard Support" => p(35, "611 (51.0%)", "0/0", "Latest on Lich: Loss · 38:18",
+        "Radiant Hard Support" => p(35, "611 (51.0%)", &[], "Latest on Lich: Loss · 38:18",
             &["spirit_vessel", "glimmer_cape", "arcane_boots", "ultimate_scepter"], "2/10/17"),
-        "Dire Carry" => p(71, "3,377 (54.9%)", "0/2", "Latest on Phantom Assassin: Win · 26:44",
+        "Dire Carry" => p(71, "3,377 (54.9%)", &[Against, Against], "Latest on Phantom Assassin: Win · 26:44",
             &["desolator", "phase_boots", "black_king_bar", "satanic", "abyssal_blade", "butterfly"], "18/2/7"),
-        "Dire Mid" => p(62, "2,120 (48.6%)", "2/2", "Latest on Invoker: Win · 33:09",
+        "Dire Mid" => p(62, "", &[Against, With, With, Against], "Latest on Invoker: Win · 33:09",
             &["hand_of_midas", "witch_blade", "travel_boots", "ultimate_scepter", "sheepstick"], "9/4/16"),
-        "Dire Offlane" => Preview { estimated: true, ..p(44, "1,244 (50.8%)", "0/0", "Latest on Axe: Loss · 30:21",
+        "Dire Offlane" => Preview { estimated: true, ..p(44, "1,244 (50.8%)", &[], "Latest on Axe: Loss · 30:21",
             &["vanguard", "blink", "blade_mail", "boots", "heart"], "5/9/12") },
-        "Dire Support" => Preview { private: true, ..p(22, "—", "Encounter history unavailable.", "Hero match history unavailable.", &[], "—") },
-        "Dire Hard Support" => p(53, "781 (46.2%)", "0/0", "Latest on Warlock: Loss · 41:07",
+        "Dire Support" => Preview { private: true, ..p(22, "—", &[], "Hero match history unavailable.", &[], "—") },
+        "Dire Hard Support" => p(53, "781 (46.2%)", &[], "Latest on Warlock: Loss · 41:07",
             &["glimmer_cape", "ultimate_scepter", "aether_lens", "arcane_boots"], "1/8/25"),
         _ => return None,
     })
@@ -142,6 +153,12 @@ pub fn apply_preview_details(player: &mut MatchPlayer) {
     player.rank_is_estimated = d.estimated;
     player.reported_rank_tier = (!d.estimated).then_some(d.tier);
     player.matches_label = d.matches.into();
+    if player.steam_id == SMURF_STEAM_ID {
+        let (wins, losses) = SMURF_RECORD;
+        let total = wins + losses;
+        player.matches_label = format!("{total} ({:.0}%)", wins as f64 * 100.0 / total as f64);
+        player.possible_smurf = crate::opendota::possible_smurf(wins, losses);
+    }
     player.is_profile_private = d.private;
     let position = match player.name.as_str() {
         "Radiant Mid" | "Dire Mid" => 2,
@@ -150,14 +167,41 @@ pub fn apply_preview_details(player: &mut MatchPlayer) {
         "Radiant Hard Support" | "Dire Hard Support" => 5,
         _ => 1,
     };
+    let now = Utc::now();
+    let with = d.encounters.iter().filter(|&&side| side == EncounterSide::With).count();
+    let against = d.encounters.len() - with;
     player.history = PlayerMatchHistory {
-        encounter_label: d.encounter.into(),
+        encounter_label: match player.name.as_str() {
+            "Mango Tester" => "You".into(),
+            _ if d.private => "Encounter history unavailable.".into(),
+            _ if d.encounters.is_empty() => "No shared matches recorded.".into(),
+            _ => format!("{with} with · {against} against"),
+        },
+        recent_encounters: d.encounters.iter().zip(SHARED_MATCHES).enumerate().map(|(i, (&side, (hero_name, hero_key, result)))| {
+            RecentEncounter {
+                match_id: (8_000_000_000u64 - i as u64).to_string(),
+                side,
+                played_at: Some(now - Duration::days(i as i64 + 1)),
+                summary: RecentMatchSummary {
+                    hero_name: hero_name.into(),
+                    hero_image_url: assets::hero_icon(hero_key),
+                    result: result.into(),
+                    analysis_outcome: None,
+                },
+            }
+        }).collect(),
         kda: d.kda.into(),
         position: (!d.private).then_some(position),
         result: if d.private { String::new() } else if d.hero_match.contains("Loss") { "Loss".into() } else { "Win".into() },
         played_at: (!d.private).then(|| Utc::now() - Duration::hours(5)),
         hero_match_label: d.hero_match.into(),
         hero_match_url: if d.private { String::new() } else { "https://www.opendota.com/matches/8000000000".into() },
+        analysis_outcome: match player.name.as_str() {
+            "Mango Tester" => Some(MatchAnalysisOutcome::Stomp),
+            "Radiant Mid" => Some(MatchAnalysisOutcome::CloseGame),
+            "Radiant Offlane" => Some(MatchAnalysisOutcome::Comeback),
+            _ => None,
+        },
         recent_matches_label: if d.private { "Recent matches unavailable." } else { "Last 5 completed matches, newest first" }.into(),
         recent_matches: if d.private {
             Vec::new()
@@ -170,6 +214,7 @@ pub fn apply_preview_details(player: &mut MatchPlayer) {
                     hero_name: hero.display_hero_name(),
                     hero_image_url: assets::hero_icon(&hero.hero_icon_key()),
                     result: if i % 3 == 1 { "Loss" } else { "Win" }.into(),
+                    analysis_outcome: [Some(MatchAnalysisOutcome::Stomp), Some(MatchAnalysisOutcome::Comeback), Some(MatchAnalysisOutcome::CloseGame), None, None][i],
                 })
                 .collect()
         },
@@ -192,6 +237,8 @@ pub fn player_overview(steam_id: &str) -> PlayerOverview {
     let all = players();
     let mut player = all.iter().find(|p| p.steam_id == steam_id).unwrap_or(&all[0]).clone();
     apply_preview_details(&mut player);
+    let (wins, losses) = if player.steam_id == SMURF_STEAM_ID { SMURF_RECORD } else { (2206, 2004) };
+    let win_rate_percent = (wins as f64 * 1000.0 / (wins + losses) as f64).round() / 10.0;
     PlayerOverview {
         steam_id: steam_id.into(),
         display_name: player.name.clone(),
@@ -199,13 +246,16 @@ pub fn player_overview(steam_id: &str) -> PlayerOverview {
         display_rank_tier: player.reported_rank_tier,
         rank_label: player.rank_label.clone(),
         is_private: player.is_profile_private,
-        wins: 2206,
-        losses: 2004,
-        win_rate_percent: Some(52.4),
+        wins,
+        losses,
+        win_rate_percent: Some(win_rate_percent),
+        possible_smurf: player.possible_smurf,
         recent_matches: vec![PlayerMatchRow {
             match_id: "8000000000".into(),
             hero_name: player.display_hero_name(),
+            hero_image_url: assets::hero_icon(&player.hero_icon_key()),
             result: "Win".into(),
+            analysis_outcome: Some(MatchAnalysisOutcome::Stomp),
             kda: "12/3/9".into(),
             duration: "31:12".into(),
             played_at: "Today".into(),

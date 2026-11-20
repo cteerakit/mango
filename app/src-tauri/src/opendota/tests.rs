@@ -61,6 +61,26 @@ async fn overview_includes_turbo_even_with_old_filtered_cache() {
     assert_eq!(overview.wins + overview.losses, 2187);
     assert_eq!((overview.wins, overview.losses), (1069, 1118));
     assert_eq!(overview.win_rate_percent, Some(48.9));
+    assert!(!overview.possible_smurf);
+}
+
+#[tokio::test]
+async fn overview_flags_possible_smurfs_with_complete_public_stats() {
+    for (private, record, expected) in [
+        (false, r#"{"win":33,"lose":17}"#, true),
+        (false, r#"{"win":49,"lose":0}"#, false),
+        (false, r#"{"win":325,"lose":175}"#, true),
+        (false, r#"{"win":326,"lose":175}"#, false),
+        (false, r#"{"win":323,"lose":174}"#, false),
+        (false, r#"{"win":100}"#, false),
+        (true, r#"{"win":100,"lose":0}"#, false),
+    ] {
+        let profile = format!(r#"{{"profile":{{"fh_unavailable":{private}}}}}"#);
+        let (od, dir) = service(player_api(Some(profile), None, None));
+        std::fs::write(dir.path().join("player_118993939_wl_all_modes.json"), record).unwrap();
+        let overview = od.player_overview("118993939").await.unwrap();
+        assert_eq!(overview.possible_smurf, expected, "{private}, {record}");
+    }
 }
 
 #[tokio::test]
@@ -146,7 +166,7 @@ async fn recent_matches_show_five_newest_heroes_excluding_displayed_match() {
                 {"match_id":1,"hero_id":14,"start_time":1,"player_slot":0,"radiant_win":true},
                 {"match_id":7,"hero_id":14,"start_time":7,"player_slot":0,"radiant_win":true},
                 {"match_id":6,"hero_id":14,"start_time":6,"player_slot":128,"radiant_win":false},
-                {"match_id":5,"hero_id":14,"start_time":5,"player_slot":128,"radiant_win":true},
+                {"match_id":90,"hero_id":14,"start_time":5,"player_slot":128,"radiant_win":true},
                 {"match_id":4,"hero_id":14,"start_time":4,"player_slot":0,"radiant_win":false},
                 {"match_id":3,"hero_id":14,"start_time":3,"player_slot":0,"radiant_win":true},
                 {"match_id":2,"hero_id":14,"start_time":2,"player_slot":128,"radiant_win":false}]"#
@@ -155,9 +175,12 @@ async fn recent_matches_show_five_newest_heroes_excluding_displayed_match() {
         })
     });
     let (od, _dir) = service(http);
-    let (matches, _) = od.recent_match_summaries("76561197960266184", "7").await;
+    let replay = FakeReplay { positions: None, fail: false, purchases: None };
+    let (matches, _) = od.recent_match_summaries("76561197960266184", "7", Some(&replay)).await;
     let results: Vec<_> = matches.iter().map(|m| m.result.as_str()).collect();
     assert_eq!(results, ["Win", "Loss", "Loss", "Win", "Win"]);
+    let outcomes: Vec<_> = matches.iter().map(|m| m.analysis_outcome).collect();
+    assert_eq!(outcomes, [None, Some(MatchAnalysisOutcome::Stomp), None, None, None]);
     assert!(matches.iter().all(|m| m.hero_name == "Pudge" && m.hero_image_url.ends_with("/heroes/pudge.png")));
 }
 
@@ -166,7 +189,7 @@ async fn recent_matches_distinguish_empty_and_unavailable_history() {
     for (json, expected) in [(Some("[]"), "No recent matches recorded by OpenDota."), (None, "Recent matches unavailable.")] {
         let http = FakeHttp::ok_or_404(move |r| if path(r) == "/api/heroes" { Some("[]".into()) } else { json.map(String::from) });
         let (od, _dir) = service(http);
-        let (matches, label) = od.recent_match_summaries("456", "100").await;
+        let (matches, label) = od.recent_match_summaries("456", "100", None).await;
         assert!(matches.is_empty());
         assert_eq!(label, expected);
     }
@@ -175,22 +198,58 @@ async fn recent_matches_distinguish_empty_and_unavailable_history() {
 #[tokio::test]
 async fn encounters_normalize_steam_ids_include_turbo_and_exclude_displayed_match() {
     let http = FakeHttp::ok_or_404(|r| {
+        if path(r) == "/api/heroes" {
+            return Some(r#"[{"id":2,"name":"npc_dota_hero_axe","localized_name":"Axe"}]"#.into());
+        }
         assert_eq!(path(r), "/api/players/123/matches");
         assert!(query(r).contains("significant=0"));
-        Some(if query(r).contains("with_account_id=456") { r#"[{"match_id":90},{"match_id":100}]"# } else { r#"[{"match_id":80}]"# }.into())
+        Some(if query(r).contains("with_account_id=456") {
+            r#"[{"match_id":90,"start_time":90},{"match_id":100,"start_time":100},{"match_id":50,"start_time":50},{"match_id":70,"start_time":70}]"#
+        } else {
+            r#"[{"match_id":95,"start_time":95,"hero_id":2,"player_slot":128,"radiant_win":false},{"match_id":60,"start_time":60},{"match_id":80,"start_time":80}]"#
+        }.into())
     });
     let (od, _dir) = service(http);
-    assert_eq!(od.encounter_label("76561197960265851", "456", "100").await, "1/1");
+    let (recent, label) = od.encounters("76561197960265851", "456", "100").await;
+    assert_eq!(label, "3 with · 3 against");
+    assert_eq!(
+        recent.iter().map(|m| (m.match_id.as_str(), m.side)).collect::<Vec<_>>(),
+        [
+            ("95", EncounterSide::Against),
+            ("90", EncounterSide::With),
+            ("80", EncounterSide::Against),
+            ("70", EncounterSide::With),
+            ("60", EncounterSide::Against),
+        ]
+    );
+    assert_eq!(recent[0].played_at.unwrap().timestamp(), 95);
+    assert_eq!(recent[0].summary.hero_name, "Axe");
+    assert_eq!(recent[0].summary.hero_image_url, assets::hero_icon("axe"));
+    assert_eq!(recent[0].summary.result, "Win");
 }
 
 #[tokio::test]
 async fn empty_recorded_history_is_different_from_unavailable_history() {
     let (od, _dir) = service(FakeHttp::ok_or_404(|_| Some("[]".into())));
-    assert_eq!(od.encounter_label("123", "456", "100").await, "0/0");
+    assert_eq!(od.encounters("123", "456", "100").await, (vec![], "No shared matches recorded.".into()));
     let (failed, _dir) = service(FakeHttp::ok_or_404(|_| None));
-    assert_eq!(failed.encounter_label("123", "789", "100").await, "Encounter history unavailable.");
-    assert_eq!(failed.encounter_label("123", "123", "100").await, "You");
-    assert_eq!(failed.encounter_label("", "1", "100").await, "Your account is needed for encounter history.");
+    assert_eq!(failed.encounters("123", "789", "100").await, (vec![], "Encounter history unavailable.".into()));
+    assert_eq!(failed.encounters("", "1", "100").await, (vec![], "Your account is needed for encounter history.".into()));
+}
+
+#[tokio::test]
+async fn encounters_keep_available_matches_when_one_lookup_fails() {
+    let (od, _dir) = service(FakeHttp::ok_or_404(|r| {
+        query(r).contains("against_account_id=456").then(|| r#"[{"match_id":90}]"#.into())
+    }));
+    let (recent, label) = od.encounters("123", "456", "100").await;
+    assert_eq!(label, "Some encounter history is unavailable.");
+    assert_eq!(recent, [RecentEncounter {
+        match_id: "90".into(),
+        side: EncounterSide::Against,
+        played_at: None,
+        summary: RecentMatchSummary { hero_name: "Unknown hero".into(), ..Default::default() },
+    }]);
 }
 
 // ---- Latest hero build -------------------------------------------------------------------
@@ -301,6 +360,10 @@ struct FakeReplay {
 
 #[async_trait]
 impl ReplaySource for FakeReplay {
+    async fn analysis_outcome(&self, match_id: i64) -> Option<MatchAnalysisOutcome> {
+        (match_id == 90 && !self.fail).then_some(MatchAnalysisOutcome::Stomp)
+    }
+
     async fn positions(&self, match_id: i64) -> Result<Option<HashMap<i64, i32>>, String> {
         assert_eq!(match_id, 90);
         if self.fail {
@@ -329,6 +392,7 @@ async fn build_uses_stratz_purchase_times_when_opendota_has_no_purchase_log() {
     assert_eq!(build.items.iter().map(|i| i.name.as_str()).collect::<Vec<_>>(), ["Force Staff", "Black King Bar"]);
     assert_eq!(build.items.iter().map(|i| i.purchase_time_seconds).collect::<Vec<_>>(), [Some(900), Some(1500)]);
     assert!(build.hero_match_label.ends_with(" · Purchase timeline"));
+    assert_eq!(build.analysis_outcome, Some(MatchAnalysisOutcome::Stomp));
 }
 
 #[tokio::test]
@@ -419,7 +483,7 @@ async fn missing_match_detail_still_links_latest_match_without_inventing_items()
 async fn no_hero_and_self_do_not_make_network_requests() {
     let http = FakeHttp::ok_or_404(|r| panic!("unexpected request {}", r.url));
     let (od, _dir) = service(http.clone());
-    assert_eq!(od.encounter_label("123", "123", "100").await, "You");
+    assert_eq!(od.encounters("123", "123", "100").await, (vec![], "You".into()));
     let build = od.latest_hero_build("123", "", "100", None).await;
     assert!(!build.has_hero_match());
     assert_eq!(build.kda, "—");

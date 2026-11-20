@@ -130,7 +130,15 @@ export function App() {
           <span className="truncate text-muted">{store.connectionStatus}</span>
         </button>
       </nav>
-      <main className="min-w-0 flex-1">{renderPage(route, navigate)}</main>
+      <main className="min-w-0 flex-1">
+        <div className="h-full" hidden={route.page !== "you"}>
+          <PlayerPage isSelf active={route.page === "you"} />
+        </div>
+        <div className="h-full" hidden={route.page !== "player"}>
+          <PlayerPage active={route.page === "player"} steamId={route.page === "player" ? route.steamId : undefined} />
+        </div>
+        {renderPage(route, navigate)}
+      </main>
     </div>
   );
 }
@@ -138,9 +146,8 @@ export function App() {
 function renderPage(route: Route, navigate: Navigate) {
   switch (route.page) {
     case "you":
-      return <PlayerPage key="you" isSelf />;
     case "player":
-      return <PlayerPage key={`player-${route.steamId ?? ""}`} steamId={route.steamId} />;
+      return null;
     case "match":
       return <MatchPage navigate={navigate} />;
     case "overlay":

@@ -7,10 +7,13 @@ export interface MatchBuildItem {
   purchaseTimeSeconds: number | null;
 }
 
+export type MatchAnalysisOutcome = "stomp" | "comeback" | "closeGame";
+
 export interface RecentMatchSummary {
   heroName: string;
   heroImageUrl: string;
   result: string;
+  analysisOutcome: MatchAnalysisOutcome | null;
 }
 
 export interface PlayerMatchHistory {
@@ -21,8 +24,15 @@ export interface PlayerMatchHistory {
   isPositionEstimated: boolean;
   playedAt: string | null;
   encounterLabel: string;
+  recentEncounters: {
+    matchId: string;
+    side: "with" | "against";
+    playedAt: string | null;
+    summary: RecentMatchSummary;
+  }[];
   heroMatchLabel: string;
   heroMatchUrl: string;
+  analysisOutcome: MatchAnalysisOutcome | null;
   items: MatchBuildItem[];
   recentMatches: RecentMatchSummary[];
   recentMatchesLabel: string;
@@ -58,6 +68,7 @@ export interface MatchPlayer {
   rankIsEstimated: boolean;
   reportedRankTier: number | null;
   matchesLabel: string;
+  possibleSmurf: boolean;
   isProfilePrivate: boolean;
   isLocalPlayer: boolean;
   history: PlayerMatchHistory;
@@ -207,7 +218,9 @@ export interface LocalIdentity {
 export interface PlayerMatchRow {
   matchId: string;
   heroName: string;
+  heroImageUrl: string;
   result: string;
+  analysisOutcome: MatchAnalysisOutcome | null;
   kda: string;
   duration: string;
   playedAt: string;
@@ -224,13 +237,14 @@ export interface PlayerOverview {
   wins: number;
   losses: number;
   winRatePercent: number | null;
+  possibleSmurf: boolean;
   isPrivate: boolean;
   recentMatches: PlayerMatchRow[];
 }
 
 export interface PlayerProfile {
   overview: PlayerOverview | null;
-  rankText: string;
+  rankMedal: { icon: string; star: string; estimated: boolean; label: string } | null;
   error: string | null;
 }
 

@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Lock, MessageSquareText, MessageSquarePlus, ThumbsDown, ThumbsUp, TriangleAlert } from "lucide-react";
+import { Lock, MessageSquareText, MessageSquarePlus, Swords, ThumbsDown, ThumbsUp, TriangleAlert, UsersRound } from "lucide-react";
 import type { Navigate } from "../App";
-import { GameImage, PositionIcon, RankMedal, ResultBadge } from "../components/GameBits";
-import { Button, Card, Dialog, IconToggle, Notice, cx, inputClass } from "../components/ui";
+import { GameImage, PositionIcon, RankMedal, ResultBadge, SmurfBadge } from "../components/GameBits";
+import { Button, Card, Dialog, IconToggle, Notice, ScrollableTable, cx, inputClass } from "../components/ui";
 import { api, errorText, openUrl } from "../lib/api";
 import { positionLabel, purchaseTime, relativeTime, splitTeams, upper } from "../lib/format";
 import { useMatchView, useNow } from "../lib/hooks";
-import type { MatchBuildItem, PlayerRow, RankOption } from "../lib/types";
+import type { MatchBuildItem, PlayerRow, RankOption, RecentMatchSummary } from "../lib/types";
 
 const VISIBLE_ITEMS = 11;
-// Column template shared by the header and rows: player | matches | last match | recent | actions.
-const COLUMNS = "grid grid-cols-[288px_112px_632px_272px_180px] items-center gap-x-3";
+const MATCH_ROW = "col-span-full grid grid-cols-subgrid items-center [&>*]:py-2";
+const PLAYER_COLUMN = "sticky left-0 z-10 flex items-center self-stretch border-r border-line bg-(--match-row-bg) pr-2 pl-3";
+const MATCH_TILE = "w-12 shrink-0 space-y-0.5";
 
 type Status = { tone: "success" | "critical"; text: string } | null;
 
@@ -38,7 +39,7 @@ export function MatchPage({ navigate }: { navigate: Navigate }) {
   };
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full overflow-y-auto" data-page-scroll>
       <div className="space-y-5 px-8 py-7">
         <header>
           <h1 className="font-display text-2xl font-semibold tracking-tight">Match</h1>
@@ -49,9 +50,9 @@ export function MatchPage({ navigate }: { navigate: Navigate }) {
             {status.text}
           </Notice>
         )}
-        <TeamCard title="The Radiant" accent="bg-radiant" players={teams.radiant} handlers={handlers} />
-        <TeamCard title="The Dire" accent="bg-dire" players={teams.dire} handlers={handlers} />
-        <TeamCard title="Lobby" accent="bg-faint" players={teams.lobby} handlers={handlers} />
+        <TeamCard title="Radiant" icon="/teams/radiant.png" players={teams.radiant} handlers={handlers} />
+        <TeamCard title="Dire" icon="/teams/dire.png" players={teams.dire} handlers={handlers} />
+        <TeamCard title="Lobby" players={teams.lobby} handlers={handlers} />
       </div>
       <NoteDialog player={noteFor} onClose={() => setNoteFor(null)} onError={(text) => setStatus({ tone: "critical", text })} />
       <RankDialog
@@ -71,15 +72,15 @@ interface RowHandlers {
   editRank: (p: PlayerRow) => void;
 }
 
-function TeamCard({ title, accent, players, handlers }: { title: string; accent: string; players: PlayerRow[]; handlers: RowHandlers }) {
+function TeamCard({ title, icon, players, handlers }: { title: string; icon?: string; players: PlayerRow[]; handlers: RowHandlers }) {
   if (players.length === 0) return null;
   return (
     <Card className="overflow-hidden">
-      <div className="overflow-x-auto">
-        <div className="min-w-max">
-          <div className={cx(COLUMNS, "border-b border-line bg-surface-2 px-3 py-2")}>
-            <div className="sticky left-0 z-10 flex items-center gap-2.5 bg-surface-2">
-              <span className={cx("h-8 w-1 rounded-full", accent)} />
+      <ScrollableTable>
+        <div className="grid min-w-max grid-cols-[308px_max-content_max-content_264px_minmax(264px,1fr)_169px] gap-x-6">
+          <div className={cx(MATCH_ROW, "border-b border-line bg-surface-2 [--match-row-bg:var(--surface-2)]")}>
+            <div className={cx(PLAYER_COLUMN, "gap-2.5")}>
+              {icon ? <img src={icon} alt="" className="size-8 shrink-0 rounded-md" /> : <span className="h-8 w-1 rounded-full bg-faint" />}
               <h2 className="font-display text-base font-semibold">{title}</h2>
             </div>
             <ColumnHeader title="Matches recorded by OpenDota, including Turbo (wins + losses)">Matches</ColumnHeader>
@@ -87,7 +88,8 @@ function TeamCard({ title, accent, players, handlers }: { title: string; accent:
               Last match as this hero
             </ColumnHeader>
             <ColumnHeader title="Last 5 completed matches, newest first">Recent matches</ColumnHeader>
-            <div className="sticky right-0 z-10 h-full border-l border-line bg-surface-2 pl-3">
+            <ColumnHeader title="Up to 5 games with or against you, newest first. Portraits and results are yours.">Shared matches</ColumnHeader>
+            <div className="sticky right-0 z-10 self-stretch border-l border-line bg-surface-2 px-2">
               <ColumnHeader>Actions</ColumnHeader>
             </div>
           </div>
@@ -95,7 +97,7 @@ function TeamCard({ title, accent, players, handlers }: { title: string; accent:
             <PlayerRowView key={`${player.steamId}|${player.name}|${player.teamSlot}`} player={player} handlers={handlers} />
           ))}
         </div>
-      </div>
+      </ScrollableTable>
     </Card>
   );
 }
@@ -111,16 +113,20 @@ function ColumnHeader({ children, title }: { children: string; title?: string })
 function PlayerRowView({ player, handlers }: { player: PlayerRow; handlers: RowHandlers }) {
   useNow(60_000);
   const history = player.history;
+  const showEncounterDash = history.encounterLabel === "No shared matches recorded."
+    || history.encounterLabel === "Encounter history unavailable.";
   const liked = player.currentMatchVote === "like";
   const disliked = player.currentMatchVote === "dislike";
-  const rowBg = player.isLocalPlayer ? "bg-[color-mix(in_srgb,var(--accent)_7%,var(--surface))]" : "bg-surface";
+  const rowColor = player.isLocalPlayer
+    ? "[--match-row-bg:color-mix(in_srgb,var(--accent)_7%,var(--surface))]"
+    : "[--match-row-bg:var(--surface)]";
   const noteLabel = player.note ? `Edit note: ${player.note}` : "Add note";
   const voteTitle = (base: string, on: boolean) => (!player.canVote ? player.voteUnavailableReason : on ? `Remove ${base.toLowerCase()}` : base);
 
   return (
-    <div className={cx(COLUMNS, "border-b border-line px-3 py-2 last:border-b-0", rowBg)}>
+    <div className={cx(MATCH_ROW, "border-b border-line bg-(--match-row-bg) last:border-b-0", rowColor)}>
       {/* Player */}
-      <div className={cx("sticky left-0 z-10 flex min-w-0 items-center gap-3", rowBg)}>
+      <div className={cx(PLAYER_COLUMN, "min-w-0 gap-3")}>
         <GameImage
           src={player.heroImageUrl}
           alt={player.displayHeroName || "Unknown hero"}
@@ -144,7 +150,15 @@ function PlayerRowView({ player, handlers }: { player: PlayerRow; handlers: RowH
               </span>
             )}
           </div>
-          <div className="truncate text-[11px] text-muted">{upper(player.displayHeroName)}</div>
+          <div className="flex items-center gap-1.5 text-[11px] text-muted">
+            <span className="truncate">{upper(player.displayHeroName)}</span>
+            {history.heroMatchUrl && (
+              <PositionIcon
+                position={history.position}
+                label={`${positionLabel(history.position, history.isPositionEstimated)}\n${history.positionBasis}`}
+              />
+            )}
+          </div>
         </div>
         <RankCell player={player} onEdit={() => handlers.editRank(player)} />
       </div>
@@ -152,25 +166,22 @@ function PlayerRowView({ player, handlers }: { player: PlayerRow; handlers: RowH
       {/* Matches */}
       <div className="tabular text-sm" title="Matches recorded by OpenDota, including Turbo (wins + losses)">
         {player.matchesLabel}
+        {player.possibleSmurf && <div className="mt-1"><SmurfBadge /></div>}
       </div>
 
       {/* Last match as this hero */}
-      <div className="grid grid-cols-[150px_1fr] items-center gap-3" title={history.heroMatchLabel}>
+      <div className="grid grid-cols-[128px_1fr] items-center gap-3">
         <div className="space-y-0.5">
-          <div className="flex items-center gap-1.5">
-            <ResultBadge result={history.result} />
-            {history.heroMatchUrl && (
-              <PositionIcon
-                position={history.position}
-                label={`${positionLabel(history.position, history.isPositionEstimated)}\n${history.positionBasis}`}
-              />
-            )}
+          <div className="flex items-center gap-1.5" title={history.heroMatchLabel}>
+            <ResultBadge result={history.result} analysisOutcome={history.analysisOutcome} />
             <span className="tabular text-base">{history.kda}</span>
           </div>
           {history.heroMatchUrl && (
-            <button type="button" onClick={() => openUrl(history.heroMatchUrl)} className="text-xs text-accent hover:underline">
-              {relativeTime(history.playedAt) || "View match"}
-            </button>
+            <div className="text-xs">
+              <button type="button" onClick={() => openUrl(history.heroMatchUrl)} className="text-muted">
+                {relativeTime(history.playedAt) || "View match"}
+              </button>
+            </div>
           )}
         </div>
         <ItemStrip items={history.items} />
@@ -185,17 +196,47 @@ function PlayerRowView({ player, handlers }: { player: PlayerRow; handlers: RowH
         ) : (
           <div className="flex gap-1.5" title={history.recentMatchesLabel}>
             {history.recentMatches.map((m, i) => (
-              <div key={i} className="w-12 space-y-0.5" title={`${m.heroName} · ${m.result}`}>
-                <GameImage src={m.heroImageUrl} alt={m.heroName} className="h-[27px] w-12 rounded-sm" />
-                <ResultBadge result={m.result} size="xs" />
+              <div key={i} className={MATCH_TILE} title={`${m.heroName} · ${m.result}`}>
+                <MatchTileContent match={m} />
               </div>
             ))}
           </div>
         )}
       </div>
 
+      {player.isLocalPlayer || history.recentEncounters.length === 0 ? (
+        <div className="text-left text-xs text-muted">
+          {player.isLocalPlayer ? "You" : showEncounterDash ? (
+            <span title={history.encounterLabel}>
+              <span aria-hidden="true">—</span>
+              <span className="sr-only">{history.encounterLabel}</span>
+            </span>
+          ) : history.encounterLabel}
+        </div>
+      ) : (
+        <div className="flex justify-start gap-1.5" role="group" aria-label={history.encounterLabel}>
+          {history.recentEncounters.map(({ matchId, side, playedAt, summary }) => {
+            const relationship = side === "with" ? "With" : "Against";
+            const details = [relationship, `Your hero: ${summary.heroName}`, summary.result, relativeTime(playedAt) || `Match ${matchId}`]
+              .filter(Boolean).join(" · ");
+            return (
+              <button
+                key={matchId}
+                type="button"
+                onClick={() => openUrl(`https://www.opendota.com/matches/${matchId}`)}
+                title={details}
+                aria-label={`Open match on OpenDota · ${details}`}
+                className={cx(MATCH_TILE, "self-start rounded-sm text-left hover:outline hover:outline-accent")}
+              >
+                <MatchTileContent match={summary} side={side} />
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Actions */}
-      <div className={cx("sticky right-0 z-10 flex h-full items-center gap-2 border-l border-line pl-3", rowBg)}>
+      <div className="sticky right-0 z-10 flex items-center gap-2 self-stretch border-l border-line bg-(--match-row-bg) px-2">
         <IconToggle label={voteTitle("Like", liked)} pressed={liked} tone="success" disabled={!player.canVote} onClick={() => handlers.vote(player, "like")}>
           <ThumbsUp className="size-4" fill={liked ? "currentColor" : "none"} />
         </IconToggle>
@@ -216,6 +257,23 @@ function PlayerRowView({ player, handlers }: { player: PlayerRow; handlers: RowH
         </IconToggle>
       </div>
     </div>
+  );
+}
+
+function MatchTileContent({ match, side }: { match: RecentMatchSummary; side?: PlayerRow["history"]["recentEncounters"][number]["side"] }) {
+  const RelationshipIcon = side === "with" ? UsersRound : Swords;
+  return (
+    <>
+      <span className="relative block">
+        <GameImage src={match.heroImageUrl} alt={match.heroName} className={cx("h-[27px] w-12 rounded-sm", side && "pointer-events-none")} />
+        {side && (
+          <span aria-hidden="true" className="absolute top-0.5 right-0.5 rounded-sm bg-black/80 p-0.5 text-white">
+            <RelationshipIcon className="size-3" />
+          </span>
+        )}
+      </span>
+      <ResultBadge result={match.result} analysisOutcome={match.analysisOutcome} size="xs" />
+    </>
   );
 }
 
