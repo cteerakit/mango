@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Lock, MessageSquareText, MessageSquarePlus, Swords, ThumbsDown, ThumbsUp, TriangleAlert, UsersRound } from "lucide-react";
 import type { Navigate } from "../App";
 import { GameImage, PositionIcon, RankMedal, ResultBadge, SmurfBadge } from "../components/GameBits";
@@ -8,7 +8,7 @@ import { positionLabel, purchaseTime, relativeTime, splitTeams, upper } from "..
 import { useMatchView, useNow } from "../lib/hooks";
 import type { MatchBuildItem, PlayerRow, RankOption, RecentMatchSummary } from "../lib/types";
 
-const VISIBLE_ITEMS = 11;
+const VISIBLE_ITEMS = 6;
 const MATCH_ROW = "col-span-full grid grid-cols-subgrid items-center [&>*]:py-2";
 const PLAYER_COLUMN = "sticky left-0 z-10 flex items-center self-stretch border-r border-line bg-(--match-row-bg) pr-2 pl-3";
 const MATCH_TILE = "w-12 shrink-0 space-y-0.5";
@@ -50,9 +50,17 @@ export function MatchPage({ navigate }: { navigate: Navigate }) {
             {status.text}
           </Notice>
         )}
-        <TeamCard title="Radiant" icon="/teams/radiant.png" players={teams.radiant} handlers={handlers} />
-        <TeamCard title="Dire" icon="/teams/dire.png" players={teams.dire} handlers={handlers} />
-        <TeamCard title="Lobby" players={teams.lobby} handlers={handlers} />
+        {(teams.radiant.length > 0 || teams.dire.length > 0) && (
+          <TeamTable>
+            <TeamCard title="Radiant" icon="/teams/radiant.png" players={teams.radiant} handlers={handlers} />
+            <TeamCard title="Dire" icon="/teams/dire.png" players={teams.dire} handlers={handlers} />
+          </TeamTable>
+        )}
+        {teams.lobby.length > 0 && (
+          <TeamTable>
+            <TeamCard title="Lobby" players={teams.lobby} handlers={handlers} />
+          </TeamTable>
+        )}
       </div>
       <NoteDialog player={noteFor} onClose={() => setNoteFor(null)} onError={(text) => setStatus({ tone: "critical", text })} />
       <RankDialog
@@ -72,32 +80,38 @@ interface RowHandlers {
   editRank: (p: PlayerRow) => void;
 }
 
+function TeamTable({ children }: { children: ReactNode }) {
+  return (
+    <ScrollableTable>
+      <div className="grid min-w-max grid-cols-[308px_max-content_max-content_264px_minmax(264px,1fr)_169px] gap-x-6 gap-y-5">
+        {children}
+      </div>
+    </ScrollableTable>
+  );
+}
+
 function TeamCard({ title, icon, players, handlers }: { title: string; icon?: string; players: PlayerRow[]; handlers: RowHandlers }) {
   if (players.length === 0) return null;
   return (
-    <Card className="overflow-hidden">
-      <ScrollableTable>
-        <div className="grid min-w-max grid-cols-[308px_max-content_max-content_264px_minmax(264px,1fr)_169px] gap-x-6">
-          <div className={cx(MATCH_ROW, "border-b border-line bg-surface-2 [--match-row-bg:var(--surface-2)]")}>
-            <div className={cx(PLAYER_COLUMN, "gap-2.5")}>
-              {icon ? <img src={icon} alt="" className="size-8 shrink-0 rounded-md" /> : <span className="h-8 w-1 rounded-full bg-faint" />}
-              <h2 className="font-display text-base font-semibold">{title}</h2>
-            </div>
-            <ColumnHeader title="Matches recorded by OpenDota, including Turbo (wins + losses)">Matches</ColumnHeader>
-            <ColumnHeader title="Result, KDA, position and items from this player's latest completed match on this hero">
-              Last match as this hero
-            </ColumnHeader>
-            <ColumnHeader title="Last 5 completed matches, newest first">Recent matches</ColumnHeader>
-            <ColumnHeader title="Up to 5 games with or against you, newest first. Portraits and results are yours.">Shared matches</ColumnHeader>
-            <div className="sticky right-0 z-10 self-stretch border-l border-line bg-surface-2 px-2">
-              <ColumnHeader>Actions</ColumnHeader>
-            </div>
-          </div>
-          {players.map((player) => (
-            <PlayerRowView key={`${player.steamId}|${player.name}|${player.teamSlot}`} player={player} handlers={handlers} />
-          ))}
+    <Card className="col-span-full grid grid-cols-subgrid overflow-clip">
+      <div className={cx(MATCH_ROW, "border-b border-line bg-surface-2 [--match-row-bg:var(--surface-2)]")}>
+        <div className={cx(PLAYER_COLUMN, "gap-2.5")}>
+          {icon ? <img src={icon} alt="" className="size-8 shrink-0 rounded-md" /> : <span className="h-8 w-1 rounded-full bg-faint" />}
+          <h2 className="font-display text-base font-semibold">{title}</h2>
         </div>
-      </ScrollableTable>
+        <ColumnHeader title="Matches recorded by OpenDota, including Turbo (wins + losses)">Matches</ColumnHeader>
+        <ColumnHeader title="Result, KDA, position and items from this player's latest completed match on this hero">
+          Last match as this hero
+        </ColumnHeader>
+        <ColumnHeader title="Last 5 completed matches, newest first">Recent matches</ColumnHeader>
+        <ColumnHeader title="Up to 5 games with or against you, newest first. Portraits show this player's hero. Results are yours.">Shared matches</ColumnHeader>
+        <div className="sticky right-0 z-10 self-stretch border-l border-line bg-surface-2 px-2">
+          <ColumnHeader>Actions</ColumnHeader>
+        </div>
+      </div>
+      {players.map((player) => (
+        <PlayerRowView key={`${player.steamId}|${player.name}|${player.teamSlot}`} player={player} handlers={handlers} />
+      ))}
     </Card>
   );
 }
@@ -217,7 +231,7 @@ function PlayerRowView({ player, handlers }: { player: PlayerRow; handlers: RowH
         <div className="flex justify-start gap-1.5" role="group" aria-label={history.encounterLabel}>
           {history.recentEncounters.map(({ matchId, side, playedAt, summary }) => {
             const relationship = side === "with" ? "With" : "Against";
-            const details = [relationship, `Your hero: ${summary.heroName}`, summary.result, relativeTime(playedAt) || `Match ${matchId}`]
+            const details = [relationship, `${player.name}'s hero: ${summary.heroName}`, summary.result, relativeTime(playedAt) || `Match ${matchId}`]
               .filter(Boolean).join(" · ");
             return (
               <button
@@ -286,7 +300,7 @@ function RankCell({ player, onEdit }: { player: PlayerRow; onEdit: () => void })
       onClick={onEdit}
       title={player.rankLabel ? `${player.rankLabel} — set or clear a manual rank` : "Set a manual rank"}
       aria-label="Edit player rank"
-      className="flex size-10 shrink-0 items-center justify-center rounded-md border border-dashed border-line text-xl text-muted hover:border-accent hover:text-fg"
+      className="flex size-10 shrink-0 items-center justify-center rounded-md text-xl text-muted hover:bg-fg/10 hover:text-fg"
     >
       {player.rankIconUrl ? medal : "+"}
     </button>

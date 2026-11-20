@@ -479,13 +479,13 @@ impl OpenDota {
         let quarter_hour = Some(Duration::from_secs(15 * 60));
         let (with, against) = tokio::join!(
             self.get_cached(
-                format!("encounters_{local}_{player}_with.json"),
-                format!("players/{local}/matches?with_account_id={player}&significant=0"),
+                format!("encounters_by_player_{player}_{local}_with.json"),
+                format!("players/{player}/matches?with_account_id={local}&significant=0"),
                 quarter_hour
             ),
             self.get_cached(
-                format!("encounters_{local}_{player}_against.json"),
-                format!("players/{local}/matches?against_account_id={player}&significant=0"),
+                format!("encounters_by_player_{player}_{local}_against.json"),
+                format!("players/{player}/matches?against_account_id={local}&significant=0"),
                 quarter_hour
             ),
         );
@@ -500,7 +500,7 @@ impl OpenDota {
                     .and_then(|time| Utc.timestamp_opt(time, 0).single());
                 let hero_id = row.get("hero_id").and_then(as_i32).filter(|&id| id > 0);
                 let result = match (row.get("player_slot").and_then(as_i32), row.get("radiant_win").and_then(Value::as_bool)) {
-                    (Some(_), Some(_)) if won(row) => "Win",
+                    (Some(_), Some(_)) if won(row) != (side == EncounterSide::Against) => "Win",
                     (Some(_), Some(_)) => "Loss",
                     _ => "",
                 };
@@ -531,7 +531,6 @@ impl OpenDota {
             self.heroes().await.ok()
         };
         let recent = teammates.into_iter().map(|(match_id, side, played_at, hero_id, result)| {
-            // Both queries are scoped to the local account, so the hero and result are theirs.
             let hero = heroes.as_ref().and_then(|heroes| heroes.iter().find(|hero| Some(hero.id) == hero_id));
             RecentEncounter {
                 match_id,

@@ -32,7 +32,7 @@ impl RosterResolution {
     }
 
     fn is_richer_than(&self, best: &RosterResolution) -> bool {
-        let key = |r: &RosterResolution| (r.identified(), roster::count_teamed(&r.players), roster::count_heroes(&r.players));
+        let key = |r: &RosterResolution| (roster::count_teamed(&r.players), r.identified(), roster::count_heroes(&r.players));
         key(self) > key(best)
     }
 }
@@ -117,9 +117,13 @@ impl RosterResolver for LiveRosterResolver {
                 resolution(Some(hit.players), Some(hit.server_steam_id), "steam-top-live")
             }));
 
-            if !snapshot.server_steam_id.trim().is_empty() {
-                let (steam, server, match_id) =
-                    (self.steam.clone(), snapshot.server_steam_id.clone(), snapshot.match_id.clone());
+            let server = if snapshot.server_steam_id.trim().is_empty() {
+                self.local.server_for(&snapshot.match_id).map(|(server, _)| server)
+            } else {
+                Some(snapshot.server_steam_id.clone())
+            };
+            if let Some(server) = server {
+                let (steam, match_id) = (self.steam.clone(), snapshot.match_id.clone());
                 sources.push(Box::pin(async move {
                     let players = steam.realtime_roster(&server, &key, &heroes, &match_id).await;
                     resolution(players, Some(server), "steam-realtime")
@@ -127,7 +131,7 @@ impl RosterResolver for LiveRosterResolver {
             }
         }
 
-        first_rich_roster(sources, Duration::from_secs(1)).await
+        first_rich_roster(sources, Duration::from_secs(5)).await
     }
 }
 

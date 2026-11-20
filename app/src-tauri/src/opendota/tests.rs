@@ -201,9 +201,9 @@ async fn encounters_normalize_steam_ids_include_turbo_and_exclude_displayed_matc
         if path(r) == "/api/heroes" {
             return Some(r#"[{"id":2,"name":"npc_dota_hero_axe","localized_name":"Axe"}]"#.into());
         }
-        assert_eq!(path(r), "/api/players/123/matches");
+        assert_eq!(path(r), "/api/players/456/matches");
         assert!(query(r).contains("significant=0"));
-        Some(if query(r).contains("with_account_id=456") {
+        Some(if query(r).contains("with_account_id=123") {
             r#"[{"match_id":90,"start_time":90},{"match_id":100,"start_time":100},{"match_id":50,"start_time":50},{"match_id":70,"start_time":70}]"#
         } else {
             r#"[{"match_id":95,"start_time":95,"hero_id":2,"player_slot":128,"radiant_win":false},{"match_id":60,"start_time":60},{"match_id":80,"start_time":80}]"#
@@ -225,7 +225,7 @@ async fn encounters_normalize_steam_ids_include_turbo_and_exclude_displayed_matc
     assert_eq!(recent[0].played_at.unwrap().timestamp(), 95);
     assert_eq!(recent[0].summary.hero_name, "Axe");
     assert_eq!(recent[0].summary.hero_image_url, assets::hero_icon("axe"));
-    assert_eq!(recent[0].summary.result, "Win");
+    assert_eq!(recent[0].summary.result, "Loss");
 }
 
 #[tokio::test]
@@ -240,7 +240,7 @@ async fn empty_recorded_history_is_different_from_unavailable_history() {
 #[tokio::test]
 async fn encounters_keep_available_matches_when_one_lookup_fails() {
     let (od, _dir) = service(FakeHttp::ok_or_404(|r| {
-        query(r).contains("against_account_id=456").then(|| r#"[{"match_id":90}]"#.into())
+        query(r).contains("against_account_id=123").then(|| r#"[{"match_id":90}]"#.into())
     }));
     let (recent, label) = od.encounters("123", "456", "100").await;
     assert_eq!(label, "Some encounter history is unavailable.");

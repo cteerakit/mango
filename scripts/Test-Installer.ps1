@@ -32,14 +32,15 @@ try {
     if ($shell.CreateShortcut($shortcut).TargetPath -ne $exe) { throw 'Start menu shortcut points to the wrong executable.' }
     if ((Get-ItemProperty $registration).DisplayVersion -ne $Version) { throw 'Windows uninstall registration has the wrong version.' }
 
-    $appProcess = Start-Process -FilePath $exe -WorkingDirectory $testRoot -WindowStyle Hidden -PassThru
+    $appProcess = Start-Process -FilePath $exe -WorkingDirectory $testRoot -PassThru
     $deadline = [DateTime]::UtcNow.AddSeconds(20)
     do {
         Start-Sleep -Milliseconds 250
         $appProcess.Refresh()
         if ($appProcess.HasExited) { throw "Installed Mango exited during startup: $($appProcess.ExitCode)." }
-    } until ($appProcess.MainWindowHandle -ne 0 -or [DateTime]::UtcNow -gt $deadline)
-    if ($appProcess.MainWindowHandle -eq 0) { throw 'Installed Mango did not create a window.' }
+    # Tauri's single-instance helper can appear before the companion window.
+    } until ($appProcess.MainWindowTitle -eq 'Mango' -or [DateTime]::UtcNow -gt $deadline)
+    if ($appProcess.MainWindowTitle -ne 'Mango') { throw 'Installed Mango did not show the companion window.' }
     if (-not ('MangoInstallerVerification' -as [type])) {
         Add-Type @'
 using System;
@@ -57,7 +58,7 @@ public static class MangoInstallerVerification
     }
     Write-Output "Installed Mango $Version launched without MSIX registration."
     # Closing the companion window quits Mango (the tray icon goes with it).
-    [void]$appProcess.CloseMainWindow()
+    if (-not $appProcess.CloseMainWindow()) { throw 'Could not request closure of the Mango companion window.' }
     if (-not $appProcess.WaitForExit(10000)) { throw 'Mango did not close normally.' }
 
     $settingsHash = (Get-FileHash -LiteralPath $settingsPath).Hash

@@ -46,7 +46,7 @@ impl LocalSteamRoster {
         Some((players, server))
     }
 
-    fn server_for(&self, match_id: &str) -> Option<(String, PathBuf)> {
+    pub(crate) fn server_for(&self, match_id: &str) -> Option<(String, PathBuf)> {
         if let Some(found) = self.servers.lock().unwrap().get(match_id) {
             return Some(found.clone());
         }
