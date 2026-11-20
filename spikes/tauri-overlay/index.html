@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mango Overlay</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="mode-banner" hidden>Interactive mode: drag widgets · Ctrl+Alt+` to lock</div>
+
+    <section class="widget" id="w-stats" data-default="24,24">
+      <header>GPM / XPM</header>
+      <div class="row"><span class="label">GPM</span><span class="value" id="gpm">0</span></div>
+      <div class="row"><span class="label">XPM</span><span class="value" id="xpm">0</span></div>
+    </section>
+
+    <section class="widget" id="w-timers" data-default="24,140">
+      <header>Objectives <span class="clock" id="clock">0:00</span></header>
+      <div id="timers"></div>
+    </section>
+
+    <section class="widget" id="w-perf" data-default="24,330">
+      <header>Spike diagnostics</header>
+      <div class="row"><span class="label">Overlay CPU</span><span class="value" id="cpu">–</span></div>
+      <div class="row"><span class="label">Overlay RAM</span><span class="value" id="mem">–</span></div>
+      <div class="row"><span class="label">Processes</span><span class="value" id="procs">–</span></div>
+      <div class="row"><span class="label">Render FPS</span><span class="value" id="fps">–</span></div>
+      <div class="row"><span class="label">DPI scale</span><span class="value" id="dpi">–</span></div>
+      <div class="hmr">Hot reload check: edit this text in index.html</div>
+    </section>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
