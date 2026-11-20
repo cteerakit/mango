@@ -220,6 +220,19 @@ impl MatchStore {
         stale
     }
 
+    pub fn refresh_draft_teams(self: &Arc<Self>) {
+        let snapshot = {
+            let inner = self.lock();
+            if inner.is_mock || !inner.is_gsi_connected || !inner.snapshot.is_in_draft()
+                || roster::count_teamed(&inner.snapshot.players) >= 10
+            {
+                return;
+            }
+            inner.snapshot.clone()
+        };
+        self.queue_roster_fetch(snapshot);
+    }
+
     fn queue_roster_fetch(self: &Arc<Self>, snapshot: MatchSnapshot) {
         if !snapshot.is_connected || !roster::needs_refresh(&snapshot.players) {
             return;
@@ -247,7 +260,7 @@ impl MatchStore {
             let awaiting_teams = !snapshot.server_steam_id.trim().is_empty() && teamed < 10;
             let retry = if strategy_time && teamed < 10 {
                 STRATEGY_ROSTER_FETCH_INTERVAL
-            } else if inner.fetch_failed || awaiting_teams {
+            } else if inner.fetch_failed || awaiting_teams || (snapshot.is_in_draft() && teamed < 10) {
                 FAILED_ROSTER_FETCH_INTERVAL
             } else {
                 MIN_ROSTER_FETCH_INTERVAL

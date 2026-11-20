@@ -77,6 +77,15 @@ fn read_tail(path: &Path, bytes: u64) -> Option<String> {
     Some(String::from_utf8_lossy(&buffer).into_owned())
 }
 
+/// Confirmed Steam friends in the local Dota party, including the local user.
+pub async fn party_members(library: &Path) -> Vec<MatchPlayer> {
+    let Some(output) = run_helper(library, "party").await else { return Vec::new() };
+    let Some(json) = output.lines().find_map(|line| line.strip_prefix(RESULT_PREFIX)) else { return Vec::new() };
+    let local = serde_json::from_str::<serde_json::Value>(json).ok()
+        .and_then(|v| v.pointer("/players/0/steamId")?.as_str().map(str::to_owned));
+    local.map(|id| steam_local::read_players(json, "party", &id)).unwrap_or_default()
+}
+
 async fn run_helper(library: &Path, server: &str) -> Option<String> {
     let exe = std::env::current_exe().ok()?;
     let mut id = [0u8; 8];
@@ -113,7 +122,7 @@ async fn run_helper(library: &Path, server: &str) -> Option<String> {
 /// Entry point of the helper process. Prints `MANGO_STEAM_ROSTER:{json}` and returns the exit code.
 pub fn helper_main(args: &[String]) -> i32 {
     let (Some(library), Some(server)) = (args.first(), args.get(1)) else { return 2 };
-    let Ok(server_id) = server.parse::<u64>() else { return 2 };
+    let server_id = if server == "party" { None } else if let Ok(id) = server.parse::<u64>() { Some(id) } else { return 2 };
     match read_server_members(Path::new(library), server_id) {
         Ok(players) => {
             let players: Vec<_> = players.into_iter().map(|(id, name)| json!({"steamId": id.to_string(), "name": name})).collect();
@@ -128,7 +137,7 @@ pub fn helper_main(args: &[String]) -> i32 {
 }
 
 #[cfg(windows)]
-fn read_server_members(library: &Path, server: u64) -> Result<Vec<(u64, String)>, String> {
+fn read_server_members(library: &Path, server: Option<u64>) -> Result<Vec<(u64, String)>, String> {
     use std::ffi::{c_char, c_void, CStr};
 
     type InitFlat = unsafe extern "C" fn(*mut c_char) -> i32;
@@ -165,13 +174,30 @@ fn read_server_members(library: &Path, server: u64) -> Result<Vec<(u64, String)>
             let name_fn: libloading::Symbol<PersonaName> =
                 lib.get(b"SteamAPI_ISteamFriends_GetFriendPersonaName").map_err(|e| e.to_string())?;
 
-            let count = count_fn(friends, server);
-            if !(1..=10).contains(&count) {
-                return Ok(Vec::new());
-            }
-            Ok((0..count)
-                .map(|index| {
-                    let id = friend_fn(friends, server, index);
+            let ids: Vec<u64> = if let Some(server) = server {
+                let count = count_fn(friends, server);
+                if !(1..=10).contains(&count) { return Ok(Vec::new()) }
+                (0..count).map(|index| friend_fn(friends, server, index)).collect()
+            } else {
+                let user = lib.get::<FriendsAccessor>(b"SteamAPI_SteamUser_v023").map_err(|e| e.to_string())?();
+                if user.is_null() { return Ok(Vec::new()) }
+                let me = lib.get::<unsafe extern "C" fn(*mut c_void) -> u64>(b"SteamAPI_ISteamUser_GetSteamID").map_err(|e| e.to_string())?(user);
+                let presence = lib.get::<unsafe extern "C" fn(*mut c_void, u64, *const c_char) -> *const c_char>(b"SteamAPI_ISteamFriends_GetFriendRichPresence").map_err(|e| e.to_string())?;
+                let group = presence(friends, me, c"steam_player_group".as_ptr());
+                if group.is_null() { return Ok(Vec::new()) }
+                let group = CStr::from_ptr(group).to_bytes().to_vec();
+                if group.is_empty() { return Ok(Vec::new()) }
+                let count = lib.get::<unsafe extern "C" fn(*mut c_void, i32) -> i32>(b"SteamAPI_ISteamFriends_GetFriendCount").map_err(|e| e.to_string())?(friends, 4);
+                let by_index = lib.get::<unsafe extern "C" fn(*mut c_void, i32, i32) -> u64>(b"SteamAPI_ISteamFriends_GetFriendByIndex").map_err(|e| e.to_string())?;
+                let mut party = vec![me];
+                for index in 0..count {
+                    let id = by_index(friends, index, 4);
+                    let other = presence(friends, id, c"steam_player_group".as_ptr());
+                    if !other.is_null() && CStr::from_ptr(other).to_bytes() == group { party.push(id); }
+                }
+                party
+            };
+            Ok(ids.into_iter().map(|id| {
                     let name = name_fn(friends, id);
                     let name = if name.is_null() { String::new() } else { CStr::from_ptr(name).to_string_lossy().into_owned() };
                     (id, name)
@@ -184,7 +210,7 @@ fn read_server_members(library: &Path, server: u64) -> Result<Vec<(u64, String)>
 }
 
 #[cfg(not(windows))]
-fn read_server_members(_library: &Path, _server: u64) -> Result<Vec<(u64, String)>, String> {
+fn read_server_members(_library: &Path, _server: Option<u64>) -> Result<Vec<(u64, String)>, String> {
     Err("The local Steam roster is only available on Windows.".into())
 }
 

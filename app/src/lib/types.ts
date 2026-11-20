@@ -75,6 +75,7 @@ export interface MatchPlayer {
 }
 
 export interface PlayerRow extends MatchPlayer {
+  isPartyMember: boolean;
   heroKey: string;
   displayHeroName: string;
   canEditRank: boolean;

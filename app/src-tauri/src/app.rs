@@ -302,6 +302,19 @@ impl AppState {
 
     /// Background loops: stale-connection check and the overlay's once-a-second refresh.
     pub fn spawn_tickers(self: &Arc<Self>) {
+        let party_state = Arc::clone(self);
+        tauri::async_runtime::spawn(async move {
+            if let Some(library) = dota::find_install_paths().iter().map(|path| dota::steam_api_library(path)).find(|p| p.is_file()) {
+                loop {
+                    let state = party_state.store.state();
+                    if !state.snapshot.is_in_match() && !state.is_using_mock_data {
+                        let party = crate::steam_roster::party_members(&library).await;
+                        party_state.match_view.set_party(party);
+                    }
+                    tokio::time::sleep(Duration::from_secs(15)).await;
+                }
+            }
+        });
         let state = Arc::clone(self);
         tauri::async_runtime::spawn(async move {
             let mut tick = tokio::time::interval(Duration::from_secs(1));
@@ -311,6 +324,7 @@ impl AppState {
                 seconds += 1;
                 if seconds.is_multiple_of(5) {
                     state.store.check_stale();
+                    state.store.refresh_draft_teams();
                 }
                 if state.overlay.is_shown() {
                     state.emit_overlay();

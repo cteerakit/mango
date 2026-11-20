@@ -276,19 +276,24 @@ impl OpenDota {
     // ---- Player overview -----------------------------------------------------------------
 
     pub async fn player_overview(&self, steam_id_text: &str) -> Option<PlayerOverview> {
+        self.load_player_overview(steam_id_text, false).await
+    }
+
+    pub async fn load_player_overview(&self, steam_id_text: &str, refresh: bool) -> Option<PlayerOverview> {
+        let max_age = |age| Some(if refresh { Duration::ZERO } else { age });
         let account = steam_id::to_account_id(steam_id_text)?;
         let (heroes, profile, win_loss, recent, ranked) = tokio::join!(
             self.heroes(),
-            self.get_cached(format!("player_{account}.json"), format!("players/{account}"), Some(hours(6))),
+            self.get_cached(format!("player_{account}.json"), format!("players/{account}"), max_age(hours(6))),
             self.get_cached(
                 format!("player_{account}_wl_all_modes.json"),
                 format!("players/{account}/wl?significant=0"),
-                Some(hours(1))
+                max_age(hours(1))
             ),
             self.get_cached(
                 format!("player_{account}_recent.json"),
                 format!("players/{account}/recentMatches"),
-                Some(Duration::from_secs(15 * 60))
+                max_age(Duration::from_secs(15 * 60))
             ),
             self.get_cached(
                 format!("player_{account}_ranked_recent.json"),

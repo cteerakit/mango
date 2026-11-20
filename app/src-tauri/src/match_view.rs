@@ -24,6 +24,7 @@ use crate::stratz::{Stratz, StratzReplay};
 pub struct PlayerRow {
     #[serde(flatten)]
     pub player: MatchPlayer,
+    pub is_party_member: bool,
     pub hero_key: String,
     pub display_hero_name: String,
     pub can_edit_rank: bool,
@@ -57,6 +58,7 @@ struct Enrichment {
 
 #[derive(Default)]
 struct Inner {
+    party: Vec<MatchPlayer>,
     enrichment: HashMap<String, Enrichment>,
     history: HashMap<String, PlayerMatchHistory>,
     enrichment_key: String,
@@ -90,20 +92,43 @@ impl MatchView {
         self.inner.lock().unwrap_or_else(|p| p.into_inner())
     }
 
+    pub fn set_party(self: &Arc<Self>, party: Vec<MatchPlayer>) {
+        let mut inner = self.lock();
+        if inner.party == party { return; }
+        inner.party = party;
+        drop(inner);
+        self.refresh();
+    }
+
+    fn display_state(&self) -> StoreState {
+        let mut state = self.store.state();
+        if !state.is_using_mock_data && !state.snapshot.is_in_match() {
+            let inner = self.lock();
+            if let Some(local) = inner.party.first() {
+                state.page_snapshot = Default::default();
+                state.page_snapshot.steam_id = local.steam_id.clone();
+                state.page_snapshot.players = inner.party.clone();
+                state.is_showing_previous_match = false;
+                state.roster_source = "steam-party".into();
+            }
+        }
+        state
+    }
+
     pub fn current(&self) -> MatchPageView {
-        let state = self.store.state();
+        let state = self.display_state();
         let settings = self.settings.read().clone();
         let inner = self.lock();
-        build_view(&state, &settings, &inner.enrichment, &inner.history)
+        build_view(&state, &settings, &inner.enrichment, &inner.history, &inner.party)
     }
 
     /// Rebuilds the view, emits it when it changed, and starts any background loads it needs.
     pub fn refresh(self: &Arc<Self>) {
-        let state = self.store.state();
+        let state = self.display_state();
         let settings = self.settings.read().clone();
         let view = {
             let mut inner = self.lock();
-            let view = build_view(&state, &settings, &inner.enrichment, &inner.history);
+            let view = build_view(&state, &settings, &inner.enrichment, &inner.history, &inner.party);
             if inner.last.as_ref() == Some(&view) {
                 None
             } else {
@@ -289,6 +314,7 @@ fn build_view(
     settings: &AppSettings,
     enrichment: &HashMap<String, Enrichment>,
     history: &HashMap<String, PlayerMatchHistory>,
+    party: &[MatchPlayer],
 ) -> MatchPageView {
     let snapshot = &state.page_snapshot;
     let local = local_steam_id(state, settings);
@@ -338,7 +364,9 @@ fn build_view(
             if state.is_using_mock_data {
                 mock::apply_preview_details(&mut player);
             }
+            let account = steam_id::to_account_id(&player.steam_id);
             PlayerRow {
+                is_party_member: !state.is_using_mock_data && account.is_some_and(|id| party.iter().any(|member| steam_id::to_account_id(&member.steam_id) == Some(id))),
                 hero_key: player.hero_icon_key(),
                 display_hero_name: player.display_hero_name(),
                 can_edit_rank: player.can_edit_rank(),
@@ -374,6 +402,7 @@ fn describe_roster(state: &StoreState, player_count: usize) -> String {
     if state.is_using_mock_data {
         return "Sample roster — mock data is enabled.".into();
     }
+    if state.roster_source == "steam-party" { return "Your Dota party".into(); }
     if state.is_showing_previous_match {
         return "Last match — stays here until the next match starts.".into();
     }
@@ -448,7 +477,7 @@ mod tests {
         settings.player_notes = notes;
         settings.player_ranks.insert("2".into(), ranks::PlayerRankOverride { rank_tier: 54, ..Default::default() });
 
-        let view = build_view(&state(vec![p("1", "radiant"), p("2", "dire")], "100"), &settings, &HashMap::new(), &HashMap::new());
+        let view = build_view(&state(vec![p("1", "radiant"), p("2", "dire")], "100"), &settings, &HashMap::new(), &HashMap::new(), &[]);
 
         let me = &view.players[0];
         assert!(me.player.is_local_player);
@@ -464,7 +493,7 @@ mod tests {
 
     #[test]
     fn votes_need_an_id_and_a_match_id() {
-        let view = build_view(&state(vec![p("", "radiant"), p("2", "dire")], "0"), &AppSettings::default(), &HashMap::new(), &HashMap::new());
+        let view = build_view(&state(vec![p("", "radiant"), p("2", "dire")], "0"), &AppSettings::default(), &HashMap::new(), &HashMap::new(), &[]);
         assert_eq!(view.players[0].player.vote_unavailable_reason, "Player has no ID.");
         assert_eq!(view.players[1].player.vote_unavailable_reason, "Waiting for a match ID.");
     }
@@ -473,20 +502,20 @@ mod tests {
     fn subtitles_explain_sparse_rosters() {
         let mut s = state(vec![p("1", "radiant")], "100");
         let settings = AppSettings::default();
-        assert!(build_view(&s, &settings, &HashMap::new(), &HashMap::new()).subtitle.contains("Loading the full lobby"));
+        assert!(build_view(&s, &settings, &HashMap::new(), &HashMap::new(), &[]).subtitle.contains("Loading the full lobby"));
         s.roster_fetch_message = "Steam said no.".into();
-        assert_eq!(build_view(&s, &settings, &HashMap::new(), &HashMap::new()).subtitle, "Steam said no.");
+        assert_eq!(build_view(&s, &settings, &HashMap::new(), &HashMap::new(), &[]).subtitle, "Steam said no.");
         s.is_showing_previous_match = true;
-        assert!(build_view(&s, &settings, &HashMap::new(), &HashMap::new()).subtitle.starts_with("Last match"));
+        assert!(build_view(&s, &settings, &HashMap::new(), &HashMap::new(), &[]).subtitle.starts_with("Last match"));
         let teamless = state(vec![p("1", ""), p("2", "")], "100");
-        assert!(build_view(&teamless, &settings, &HashMap::new(), &HashMap::new()).subtitle.starts_with("Showing 2 players"));
+        assert!(build_view(&teamless, &settings, &HashMap::new(), &HashMap::new(), &[]).subtitle.starts_with("Showing 2 players"));
     }
 
     #[test]
     fn mock_mode_fills_preview_details() {
         let mut s = state(mock::players(), "debug-x");
         s.is_using_mock_data = true;
-        let view = build_view(&s, &AppSettings::default(), &HashMap::new(), &HashMap::new());
+        let view = build_view(&s, &AppSettings::default(), &HashMap::new(), &HashMap::new(), &[]);
         assert!(view.is_mock);
         assert_eq!(view.players[1].player.matches_label, "2,964 (50.1%)");
         assert!(!view.players[1].player.history.items.is_empty());

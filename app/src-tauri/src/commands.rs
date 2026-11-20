@@ -397,12 +397,12 @@ struct ProfileRankMedal {
 }
 
 #[tauri::command]
-pub async fn player_profile(state: S<'_>, steam_id: String) -> Result<PlayerProfile, String> {
+pub async fn player_profile(state: S<'_>, steam_id: String, refresh: Option<bool>) -> Result<PlayerProfile, String> {
     let is_mock = state.store.state().is_using_mock_data;
     let overview = if is_mock {
         Some(mock::player_overview(&steam_id))
     } else {
-        let mut overview = state.opendota.player_overview(&steam_id).await;
+        let mut overview = state.opendota.load_player_overview(&steam_id, refresh.unwrap_or(false)).await;
         let token = state.settings.read().stratz_api_token.clone();
         if let Some(profile) = overview.as_mut().filter(|_| !token.trim().is_empty()) {
             let replay = StratzReplay { stratz: state.stratz.clone(), token };

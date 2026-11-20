@@ -251,24 +251,30 @@ function PlayerRowView({ player, handlers }: { player: PlayerRow; handlers: RowH
 
       {/* Actions */}
       <div className="sticky right-0 z-10 flex items-center gap-2 self-stretch border-l border-line bg-(--match-row-bg) px-2">
-        <IconToggle label={voteTitle("Like", liked)} pressed={liked} tone="success" disabled={!player.canVote} onClick={() => handlers.vote(player, "like")}>
-          <ThumbsUp className="size-4" fill={liked ? "currentColor" : "none"} />
-        </IconToggle>
-        <IconToggle label={voteTitle("Dislike", disliked)} pressed={disliked} tone="critical" disabled={!player.canVote} onClick={() => handlers.vote(player, "dislike")}>
-          <ThumbsDown className="size-4" fill={disliked ? "currentColor" : "none"} />
-        </IconToggle>
-        <IconToggle
-          label={!player.canMarkToxic ? "Player has no ID." : player.isToxic ? "Remove toxic mark" : "Mark as toxic player"}
-          pressed={player.isToxic}
-          tone="caution"
-          disabled={!player.canMarkToxic}
-          onClick={() => handlers.toggleToxic(player)}
-        >
-          <TriangleAlert className="size-4" />
-        </IconToggle>
-        <IconToggle label={noteLabel} pressed={!!player.note} disabled={!player.steamId} onClick={() => handlers.editNote(player)}>
-          {player.note ? <MessageSquareText className="size-4" /> : <MessageSquarePlus className="size-4" />}
-        </IconToggle>
+        {player.isLocalPlayer || player.isPartyMember ? (
+          <span className="text-xs text-muted">{player.isLocalPlayer ? "You" : "Party member"}</span>
+        ) : (
+          <>
+            <IconToggle label={voteTitle("Like", liked)} pressed={liked} tone="success" disabled={!player.canVote} onClick={() => handlers.vote(player, "like")}>
+              <ThumbsUp className="size-4" fill={liked ? "currentColor" : "none"} />
+            </IconToggle>
+            <IconToggle label={voteTitle("Dislike", disliked)} pressed={disliked} tone="critical" disabled={!player.canVote} onClick={() => handlers.vote(player, "dislike")}>
+              <ThumbsDown className="size-4" fill={disliked ? "currentColor" : "none"} />
+            </IconToggle>
+            <IconToggle
+              label={!player.canMarkToxic ? "Player has no ID." : player.isToxic ? "Remove toxic mark" : "Mark as toxic player"}
+              pressed={player.isToxic}
+              tone="caution"
+              disabled={!player.canMarkToxic}
+              onClick={() => handlers.toggleToxic(player)}
+            >
+              <TriangleAlert className="size-4" />
+            </IconToggle>
+            <IconToggle label={noteLabel} pressed={!!player.note} disabled={!player.steamId} onClick={() => handlers.editNote(player)}>
+              {player.note ? <MessageSquareText className="size-4" /> : <MessageSquarePlus className="size-4" />}
+            </IconToggle>
+          </>
+        )}
       </div>
     </div>
   );

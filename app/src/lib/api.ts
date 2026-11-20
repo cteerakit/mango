@@ -104,7 +104,7 @@ export const api = {
   localPlayer: () => invoke<string>("local_player", undefined, ""),
   playerIdentity: (steamId: string) =>
     invoke<T.LocalIdentity>("player_identity", { steamId }, { steamId, name: "", note: "", likes: 0, dislikes: 0 }),
-  playerProfile: (steamId: string) => invoke<T.PlayerProfile>("player_profile", { steamId }),
+  playerProfile: (steamId: string, refresh = false) => invoke<T.PlayerProfile>("player_profile", { steamId, refresh }),
 
   overlaySetVisible: (visible: boolean) => invoke<void>("overlay_set_visible", { visible }),
   overlaySetInteractive: (interactive: boolean) => invoke<void>("overlay_set_interactive", { interactive }),

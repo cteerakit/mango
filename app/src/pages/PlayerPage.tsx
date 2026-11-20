@@ -53,14 +53,14 @@ export function PlayerPage({ isSelf = false, steamId: requested, active = true }
   const loading = pending.has(key);
   const identity = playerIdentity?.key === key ? playerIdentity.identity : undefined;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (refresh = false) => {
     if (!target || requests.current.get(key)?.version === notesVersion) return;
     const next = { version: notesVersion };
     requests.current.set(key, next);
     setPending((previous) => new Set(previous).add(key));
     let result: PlayerProfile;
     try {
-      result = await api.playerProfile(target);
+      result = await api.playerProfile(target, refresh);
     } catch (error) {
       result = { overview: null, rankMedal: null, error: `Could not load OpenDota data: ${errorText(error)}` };
     }
@@ -116,7 +116,12 @@ export function PlayerPage({ isSelf = false, steamId: requested, active = true }
     <Page
       title={isSelf ? "You" : "Player"}
       subtitle={isSelf && target ? undefined : subtitle}
-      actions={loading ? <Spinner className="size-5" /> : undefined}
+      actions={isSelf ? (
+        <Button onClick={() => void load(true)} disabled={!target || loading}>
+          {loading ? <Spinner className="size-4" /> : <RefreshCw className="size-4" />}
+          {loading ? "Refreshing…" : "Refresh"}
+        </Button>
+      ) : loading ? <Spinner className="size-5" /> : undefined}
     >
       {!isSelf && (
         <Card className="p-5">

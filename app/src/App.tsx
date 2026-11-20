@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import { ArrowLeft, Info, Keyboard, Layers, Settings, Swords, User, Users } from "lucide-react";
+import { ArrowLeft, Info, Keyboard, Layers, MessageSquare, Settings, Swords, User, Users } from "lucide-react";
 import { cx } from "./components/ui";
 import { useSettings, useStoreState } from "./lib/hooks";
 import type { StoreState } from "./lib/types";
@@ -38,6 +38,12 @@ const NAV: { page: Route["page"]; label: string; icon: ReactNode }[] = [
 ];
 
 const THEMES = ["system", "light", "dark"] as const;
+
+declare global {
+  interface Window {
+    ShippedFeedback?: { open(): void };
+  }
+}
 
 /** Grey waiting, amber connected in menus, green live, blue mock. */
 function statusColor(store: StoreState) {
@@ -96,7 +102,7 @@ export function App() {
             Mango
           </span>
         </div>
-        <ul className="flex-1 space-y-0.5 px-2">
+        <ul className="flex-1 space-y-0.5 overflow-y-auto px-2">
           {NAV.map((item) => (
             <li key={item.page}>
               <button
@@ -116,6 +122,18 @@ export function App() {
             </li>
           ))}
         </ul>
+        <button
+          type="button"
+          aria-haspopup="dialog"
+          onClick={() => {
+            if (window.ShippedFeedback) window.ShippedFeedback.open();
+            else window.alert("Feedback is currently unavailable. Please try again later.");
+          }}
+          className="mx-2 flex h-9 shrink-0 items-center gap-3 rounded-md px-3 text-left text-sm text-muted transition-colors hover:bg-surface-2 hover:text-fg"
+        >
+          <MessageSquare className="size-4.5" aria-hidden="true" />
+          Feedback
+        </button>
         <button
           type="button"
           onClick={() => select("status")}
