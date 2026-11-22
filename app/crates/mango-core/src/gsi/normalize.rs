@@ -4,10 +4,10 @@ use chrono::Utc;
 use indexmap::IndexMap;
 
 use super::payload::*;
-use crate::match_id;
 use crate::model::{format_internal_name, DraftSnapshot, MatchPlayer, MatchSnapshot, SlotSnapshot};
 use crate::roster::compare_by_team;
 use crate::text::contains_ignore_case;
+use crate::{match_id, steam_id};
 
 pub fn normalize(payload: &GsiPayload) -> MatchSnapshot {
     let local_player = payload.player.as_ref().and_then(|p| p.local.as_ref());
@@ -88,12 +88,28 @@ fn all_players(payload: &GsiPayload) -> Vec<MatchPlayer> {
     let Some(all) = payload.all_players.as_ref() else {
         return Vec::new();
     };
+    let local_account = payload
+        .player
+        .as_ref()
+        .and_then(|p| p.local.as_ref())
+        .and_then(|p| steam_id::to_account_id(p.steam_id.as_deref()?));
+    let local_hero = payload
+        .hero
+        .as_ref()
+        .and_then(|h| h.local.as_ref())
+        .filter(|h| !blank(&h.name));
     let mut players: Vec<_> = all
         .iter()
         .map(|(key, player)| {
             let mut player = player.clone();
             apply_team_hints(&mut player, key);
-            to_match_player(&player, player.hero.as_ref())
+            let account = player.steam_id.as_deref().and_then(steam_id::to_account_id);
+            let hero = if account.is_some() && account == local_account {
+                local_hero.or(player.hero.as_ref())
+            } else {
+                player.hero.as_ref()
+            };
+            to_match_player(&player, hero)
         })
         .filter(MatchPlayer::has_identity)
         .collect();

@@ -122,11 +122,18 @@ async fn estimates_from_recent_ranked_lobbies_and_record() {
              {"match_id":20,"start_time":200,"lobby_type":7,"average_rank":44,"player_slot":128}]"#;
         let profile = serde_json::json!({"rank_tier": old_tier, "profile": {"fh_unavailable": true}});
         let (od, dir) = service(player_api(Some(profile.to_string()), Some(ranked), None));
+        let ranked_cache = dir.path().join("player_118993939_ranked_recent.json");
         std::fs::write(
-            dir.path().join("player_118993939_ranked_recent.json"),
+            &ranked_cache,
             r#"[{"match_id":10,"start_time":100,"lobby_type":7,"average_rank":11}]"#,
         )
         .unwrap();
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(ranked_cache)
+            .unwrap()
+            .set_modified(SystemTime::now() - hours(1))
+            .unwrap();
 
         let overview = od.player_overview("118993939").await.unwrap();
 
@@ -492,6 +499,24 @@ async fn no_hero_and_self_do_not_make_network_requests() {
 }
 
 // ---- Cache behaviour ---------------------------------------------------------------------
+
+#[tokio::test]
+async fn reuses_player_history_across_matches_until_manually_refreshed() {
+    let http = player_api(None, None, None);
+    let (od, _dir) = service(http.clone());
+    assert!(od.player_overview("118993939").await.is_some());
+    let initial_requests = http.count();
+
+    for match_id in ["100", "101"] {
+        let (_, label) = od.recent_match_summaries("118993939", match_id, None).await;
+        assert_eq!(label, "No recent matches recorded by OpenDota.");
+        assert!(od.player_overview("118993939").await.is_some());
+        assert_eq!(http.count(), initial_requests);
+    }
+
+    assert!(od.load_player_overview("118993939", true).await.is_some());
+    assert_eq!(http.count() - initial_requests, 4);
+}
 
 #[tokio::test]
 async fn transient_errors_retry_then_fall_back_to_stale_cache() {

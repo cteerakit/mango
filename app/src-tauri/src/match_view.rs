@@ -59,9 +59,9 @@ struct Enrichment {
 #[derive(Default)]
 struct Inner {
     party: Vec<MatchPlayer>,
-    enrichment: HashMap<String, Enrichment>,
+    enrichment: HashMap<u64, Enrichment>,
     history: HashMap<String, PlayerMatchHistory>,
-    enrichment_key: String,
+    enrichment_accounts: Vec<u64>,
     history_key: String,
     enrichment_task: Option<tauri::async_runtime::JoinHandle<()>>,
     history_task: Option<tauri::async_runtime::JoinHandle<()>>,
@@ -102,16 +102,7 @@ impl MatchView {
 
     fn display_state(&self) -> StoreState {
         let mut state = self.store.state();
-        if !state.is_using_mock_data && !state.snapshot.is_in_match() {
-            let inner = self.lock();
-            if let Some(local) = inner.party.first() {
-                state.page_snapshot = Default::default();
-                state.page_snapshot.steam_id = local.steam_id.clone();
-                state.page_snapshot.players = inner.party.clone();
-                state.is_showing_previous_match = false;
-                state.roster_source = "steam-party".into();
-            }
-        }
+        apply_party_fallback(&mut state, &self.lock().party);
         state
     }
 
@@ -146,39 +137,37 @@ impl MatchView {
     }
 
     fn queue_enrichment(self: &Arc<Self>, players: &[MatchPlayer]) {
-        let mut ids: Vec<String> = players
+        let mut accounts: Vec<u64> = players
             .iter()
-            .map(|p| p.steam_id.trim().to_string())
-            .filter(|id| steam_id::to_account_id(id).is_some())
+            .filter_map(|p| steam_id::to_account_id(&p.steam_id))
             .collect();
-        ids.sort();
-        ids.dedup();
-        let key = ids.join("|");
+        accounts.sort_unstable();
+        accounts.dedup();
         let mut inner = self.lock();
-        if ids.is_empty() {
-            inner.enrichment_key = key;
+        if inner.enrichment_accounts == accounts {
             return;
         }
-        let missing = ids.iter().any(|id| !inner.enrichment.contains_key(id));
-        if !missing && inner.enrichment_key == key {
-            return;
-        }
-        inner.enrichment_key = key.clone();
+        inner.enrichment_accounts = accounts.clone();
         if let Some(task) = inner.enrichment_task.take() {
             task.abort();
         }
+        if accounts.is_empty() {
+            return;
+        }
         let view = Arc::clone(self);
         inner.enrichment_task = Some(tauri::async_runtime::spawn(async move {
-            let overviews = futures::future::join_all(ids.iter().map(|id| view.opendota.player_overview(id))).await;
+            let overviews = futures::future::join_all(accounts.iter().map(|account| async {
+                view.opendota.player_overview(&account.to_string()).await
+            })).await;
             let lobby_average = rank_estimate::average_rank_tier(
                 overviews.iter().flatten().filter_map(|o| o.rank_tier).filter(|t| *t > 0),
             );
             {
                 let mut inner = view.lock();
-                if inner.enrichment_key != key {
+                if inner.enrichment_accounts != accounts {
                     return;
                 }
-                for (id, overview) in ids.iter().zip(overviews) {
+                for (account, overview) in accounts.into_iter().zip(overviews) {
                     let private = overview.as_ref().is_some_and(|o| o.is_private);
                     let resolved = rank_estimate::resolve(
                         overview.as_ref().and_then(|o| o.rank_tier),
@@ -190,7 +179,7 @@ impl MatchView {
                     );
                     let has_rank = resolved.rank_tier.is_some_and(|t| t > 0);
                     inner.enrichment.insert(
-                        id.clone(),
+                        account,
                         Enrichment {
                             avatar_url: overview.as_ref().map(|o| o.avatar_url.clone()).unwrap_or_default(),
                             rank_icon_url: if has_rank { assets::rank_icon(resolved.rank_tier) } else { String::new() },
@@ -309,10 +298,22 @@ fn history_key(local: &str, match_id: &str, player: &MatchPlayer) -> String {
     format!("{local}|{match_id}|{}|{}", player.steam_id, player.hero_icon_key())
 }
 
+fn apply_party_fallback(state: &mut StoreState, party: &[MatchPlayer]) {
+    if state.is_using_mock_data || state.is_showing_previous_match || state.snapshot.is_in_match() {
+        return;
+    }
+    if let Some(local) = party.first() {
+        state.page_snapshot = Default::default();
+        state.page_snapshot.steam_id = local.steam_id.clone();
+        state.page_snapshot.players = party.to_vec();
+        state.roster_source = "steam-party".into();
+    }
+}
+
 fn build_view(
     state: &StoreState,
     settings: &AppSettings,
-    enrichment: &HashMap<String, Enrichment>,
+    enrichment: &HashMap<u64, Enrichment>,
     history: &HashMap<String, PlayerMatchHistory>,
     party: &[MatchPlayer],
 ) -> MatchPageView {
@@ -337,7 +338,8 @@ fn build_view(
                 .map(|n| n.last_vote.clone())
                 .unwrap_or_default();
 
-            let e = enrichment.get(&player.steam_id).cloned().unwrap_or_default();
+            let account = steam_id::to_account_id(&player.steam_id);
+            let e = account.and_then(|id| enrichment.get(&id)).cloned().unwrap_or_default();
             player.avatar_url = e.avatar_url;
             player.rank_icon_url = e.rank_icon_url;
             player.rank_star_url = e.rank_star_url;
@@ -347,6 +349,10 @@ fn build_view(
             player.possible_smurf = e.possible_smurf;
             player.is_profile_private = e.is_profile_private;
             player.reported_rank_tier = e.reported_rank_tier;
+            if player.is_profile_private && player.rank_icon_url.is_empty() {
+                player.rank_icon_url = assets::rank_icon(None);
+                player.rank_label = "Private profile · Rank unavailable".into();
+            }
 
             if let Some(saved) =
                 ranks::get(&settings.player_ranks, &player.steam_id, player.is_profile_private, player.reported_rank_tier)
@@ -358,13 +364,12 @@ fn build_view(
             }
 
             player.is_local_player =
-                local_account.is_some() && local_account == steam_id::to_account_id(&player.steam_id);
+                local_account.is_some() && local_account == account;
             player.hero_image_url = assets::hero_icon(&player.hero_icon_key());
             player.history = history.get(&history_key(&local, &snapshot.match_id, &player)).cloned().unwrap_or_default();
             if state.is_using_mock_data {
                 mock::apply_preview_details(&mut player);
             }
-            let account = steam_id::to_account_id(&player.steam_id);
             PlayerRow {
                 is_party_member: !state.is_using_mock_data && account.is_some_and(|id| party.iter().any(|member| steam_id::to_account_id(&member.steam_id) == Some(id))),
                 hero_key: player.hero_icon_key(),
@@ -496,6 +501,40 @@ mod tests {
         let view = build_view(&state(vec![p("", "radiant"), p("2", "dire")], "0"), &AppSettings::default(), &HashMap::new(), &HashMap::new(), &[]);
         assert_eq!(view.players[0].player.vote_unavailable_reason, "Player has no ID.");
         assert_eq!(view.players[1].player.vote_unavailable_reason, "Waiting for a match ID.");
+    }
+
+    #[test]
+    fn private_profile_without_rank_has_a_placeholder_medal() {
+        let state = state(vec![p("2", "dire")], "100");
+        let enrichment = HashMap::from([(2, Enrichment {
+            is_profile_private: true,
+            ..Default::default()
+        })]);
+        let view = build_view(&state, &AppSettings::default(), &enrichment, &HashMap::new(), &[]);
+
+        assert_eq!(view.players[0].player.rank_icon_url, assets::rank_icon(None));
+        assert_eq!(view.players[0].player.rank_label, "Private profile · Rank unavailable");
+    }
+
+    #[test]
+    fn party_fallback_preserves_the_finished_match() {
+        let mut state = state(vec![p("1", "radiant"), p("2", "dire")], "100");
+        state.snapshot = MatchSnapshot::default();
+        state.is_showing_previous_match = true;
+        let party = [p("1", ""), p("3", "")];
+        let finished = state.page_snapshot.clone();
+
+        apply_party_fallback(&mut state, &party);
+
+        assert_eq!(state.page_snapshot, finished);
+        assert!(state.is_showing_previous_match);
+
+        state.is_showing_previous_match = false;
+        state.page_snapshot = MatchSnapshot::default();
+        apply_party_fallback(&mut state, &party);
+
+        assert_eq!(state.page_snapshot.players, party);
+        assert_eq!(state.roster_source, "steam-party");
     }
 
     #[test]

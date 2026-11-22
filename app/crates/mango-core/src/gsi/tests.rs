@@ -156,6 +156,28 @@ fn infers_teams_from_all_players_keys_when_team_name_missing() {
 }
 
 #[test]
+fn keeps_local_hero_when_all_players_supplies_the_roster() {
+    let payload = parse(
+        r#"{
+          "map": { "game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION" },
+          "player": { "steamid": "39734273", "name": "Me", "team_name": "radiant" },
+          "hero": { "id": 2, "name": "npc_dota_hero_axe", "level": 1 },
+          "allplayers": {
+            "player0": { "steamid": "76561198000000001", "name": "Me" },
+            "player1": { "steamid": "76561198000000002", "name": "Ally" }
+          }
+        }"#,
+    );
+
+    let snapshot = normalize(&payload);
+
+    assert_eq!(snapshot.players.len(), 2);
+    assert_eq!(snapshot.players[0].hero_icon_key(), "axe");
+    assert_eq!(snapshot.players[0].hero_level, 1);
+    assert!(snapshot.players[1].hero_icon_key().is_empty());
+}
+
+#[test]
 fn prefers_spectating_teams_over_sparse_all_players() {
     let payload = parse(
         r#"{

@@ -109,8 +109,6 @@ pub struct OpenDota {
     request_throttle: Semaphore,
     match_detail_throttle: Semaphore,
     cache_locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
-    /// Match id each player's recent matches were last force-refreshed for.
-    recent_refreshed_for: Mutex<HashMap<u64, String>>,
     /// Waits between retries; zero in tests.
     retry_delay: Duration,
 }
@@ -126,7 +124,6 @@ impl OpenDota {
             request_throttle: Semaphore::new(6),
             match_detail_throttle: Semaphore::new(4),
             cache_locks: Mutex::new(HashMap::new()),
-            recent_refreshed_for: Mutex::new(HashMap::new()),
             retry_delay: Duration::from_secs(1),
         }
     }
@@ -298,7 +295,7 @@ impl OpenDota {
             self.get_cached(
                 format!("player_{account}_ranked_recent.json"),
                 format!("players/{account}/matches?lobby_type=7&limit=10&sort=start_time&significant=0"),
-                Some(Duration::ZERO)
+                max_age(Duration::from_secs(15 * 60))
             ),
         );
         if profile.is_none() && win_loss.is_none() && recent.is_none() && ranked.is_none() {
@@ -423,16 +420,13 @@ impl OpenDota {
         let Some(account) = steam_id::to_account_id(steam_id_text) else {
             return (Vec::new(), "Recent matches unavailable.".into());
         };
-        // A new match means the previous one just finished, so skip the cache once per player.
-        let refresh = match_id::is_usable(excluded_match_id)
-            && self.recent_refreshed_for.lock().unwrap().get(&account).map(String::as_str) != Some(excluded_match_id);
-        let max_age = if refresh { Duration::ZERO } else { Duration::from_secs(15 * 60) };
         let matches = self
-            .get_cached(format!("player_{account}_recent.json"), format!("players/{account}/recentMatches"), Some(max_age))
+            .get_cached(
+                format!("player_{account}_recent.json"),
+                format!("players/{account}/recentMatches"),
+                Some(Duration::from_secs(15 * 60)),
+            )
             .await;
-        if refresh {
-            self.recent_refreshed_for.lock().unwrap().insert(account, excluded_match_id.into());
-        }
         let Some(matches) = matches.as_ref().and_then(Value::as_array) else {
             return (Vec::new(), "Recent matches unavailable.".into());
         };
